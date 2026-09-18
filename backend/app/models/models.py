@@ -1,0 +1,98 @@
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Text, DateTime
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from app.database.database import Base
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    email = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    education = Column(String)
+    experience_level = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    profile = relationship("Profile", back_populates="user", uselist=False)
+    interviews = relationship("Interview", back_populates="user")
+    recommendations = relationship("Recommendation", back_populates="user")
+
+
+class Profile(Base):
+    __tablename__ = "profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    phone = Column(String, nullable=True)
+    college = Column(String, nullable=True)
+    degree = Column(String, nullable=True)
+    skills = Column(Text, nullable=True) # Comma separated or JSON string
+    certifications = Column(Text, nullable=True)
+    target_role = Column(String, nullable=True)
+    resume_path = Column(String, nullable=True)
+
+    user = relationship("User", back_populates="profile")
+
+
+class Interview(Base):
+    __tablename__ = "interviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    job_role = Column(String)
+    interview_type = Column(String)
+    difficulty = Column(String)
+    mode = Column(String) # Text or Voice
+    total_questions = Column(Integer)
+    overall_score = Column(Float, nullable=True)
+    duration = Column(Integer, nullable=True) # in seconds
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="interviews")
+    questions = relationship("Question", back_populates="interview")
+
+
+class Question(Base):
+    __tablename__ = "questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    interview_id = Column(Integer, ForeignKey("interviews.id"))
+    question_text = Column(Text)
+    question_type = Column(String)
+    difficulty = Column(String)
+    topic = Column(String, nullable=True)
+    sequence_number = Column(Integer)
+
+    interview = relationship("Interview", back_populates="questions")
+    answer = relationship("Answer", back_populates="question", uselist=False)
+
+
+class Answer(Base):
+    __tablename__ = "answers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    question_id = Column(Integer, ForeignKey("questions.id"), unique=True)
+    answer_text = Column(Text)
+    score = Column(Float, nullable=True)
+    technical_score = Column(Float, nullable=True)
+    communication_score = Column(Float, nullable=True)
+    relevance_score = Column(Float, nullable=True)
+    completeness_score = Column(Float, nullable=True)
+    feedback = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    question = relationship("Question", back_populates="answer")
+
+
+class Recommendation(Base):
+    __tablename__ = "recommendations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    topic = Column(String)
+    recommendation = Column(Text)
+    priority = Column(Integer) # e.g., 1=High, 2=Medium, 3=Low
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="recommendations")
