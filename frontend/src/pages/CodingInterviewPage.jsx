@@ -32,6 +32,11 @@ const CodingInterviewPage = () => {
   const [executionResult, setExecutionResult] = useState(null);
   const [executionError, setExecutionError] = useState(null);
   const [notice, setNotice] = useState(null);
+  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState(null);
+  const [submissions, setSubmissions] = useState([]);
+  const [leftTab, setLeftTab] = useState('problem');
 
   // Fetch problem list on mount
   useEffect(() => {
@@ -59,10 +64,22 @@ const CodingInterviewPage = () => {
   useEffect(() => {
     if (selectedProblemId) {
       fetchProblemDetail(selectedProblemId);
+      fetchSubmissions(selectedProblemId);
       setExecutionResult(null);
       setExecutionError(null);
+      setSubmissionResult(null);
+      setLeftTab('problem');
     }
   }, [selectedProblemId]);
+
+  const fetchSubmissions = async (id) => {
+    try {
+      const res = await api.get(`/coding/submissions?problem_id=${id}`);
+      setSubmissions(res.data || []);
+    } catch (err) {
+      console.error('Failed to fetch submissions:', err);
+    }
+  };
 
   // Reset execution state on language change
   useEffect(() => {
@@ -129,9 +146,10 @@ const CodingInterviewPage = () => {
   };
 
   const handleRunCode = async () => {
-    if (!selectedProblemId || isRunning) return;
+    if (!selectedProblemId || isRunning || isSubmitting) return;
     setIsRunning(true);
     setExecutionResult(null);
+    setSubmissionResult(null);
     setExecutionError(null);
     setNotice(null);
 
@@ -150,11 +168,42 @@ const CodingInterviewPage = () => {
     }
   };
 
-  const handleSubmitCode = () => {
-    setNotice({
-      type: 'info',
-      message: 'Submission evaluation & scoring will be available in Checkpoint 5C.'
-    });
+  const handleSubmitCode = async () => {
+    if (!selectedProblemId || isSubmitting || isRunning) return;
+    setIsSubmitting(true);
+    setSubmissionResult(null);
+    setExecutionResult(null);
+    setExecutionError(null);
+    setNotice(null);
+
+    try {
+      const res = await api.post('/coding/submit', {
+        problem_id: selectedProblemId,
+        language: selectedLanguage,
+        code: currentCode
+      });
+      setSubmissionResult(res.data);
+      fetchSubmissions(selectedProblemId);
+    } catch (err) {
+      console.error('Submit API error:', err);
+      setExecutionError(err.response?.data?.detail || 'Submission service failed');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleViewSubmission = async (sub) => {
+    try {
+      const res = await api.get(`/coding/submissions/${sub.id}`);
+      setSubmissionResult(res.data);
+      setExecutionResult(null);
+      if (res.data.source_code) {
+        setSelectedLanguage(res.data.language);
+        handleCodeChange(res.data.source_code);
+      }
+    } catch (err) {
+      console.error('Failed to fetch submission details:', err);
+    }
   };
 
   // Navigate next / previous problem
@@ -282,8 +331,18 @@ const CodingInterviewPage = () => {
             </div>
           ) : problemDetail ? (
             <>
-              <div>
-                <h1 className="text-2xl font-bold text-white mb-2">{problemDetail.title}</h1>
+              <div className="flex space-x-1 border-b border-slate-800 pb-2">
+                <button onClick={() => setLeftTab('problem')} className={`px-4 py-2 text-sm font-medium rounded-t-lg transition ${leftTab === 'problem' ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>Description</button>
+                <button onClick={() => setLeftTab('submissions')} className={`px-4 py-2 text-sm font-medium rounded-t-lg transition flex items-center space-x-2 ${leftTab === 'submissions' ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>
+                  <span>Submissions</span>
+                  {submissions.length > 0 && <span className="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded text-xs">{submissions.length}</span>}
+                </button>
+              </div>
+
+              {leftTab === 'problem' ? (
+              <div className="space-y-6">
+                <div>
+                  <h1 className="text-2xl font-bold text-white mb-2">{problemDetail.title}</h1>
                 <div className="flex items-center space-x-2 text-xs text-slate-400 mb-4">
                   <Layers className="h-3.5 w-3.5" />
                   <span>Category: {problemDetail.category}</span>
@@ -334,6 +393,30 @@ const CodingInterviewPage = () => {
                       <li key={idx} className="leading-relaxed">{c}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+              </div>
+              ) : (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-bold text-white mb-4">Past Submissions</h2>
+                  {submissions.length === 0 ? (
+                    <div className="text-slate-500 text-sm text-center py-8">No submissions yet for this problem.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {submissions.map(sub => (
+                        <div key={sub.id} onClick={() => handleViewSubmission(sub)} className="cursor-pointer bg-slate-950 border border-slate-800 hover:border-slate-600 p-4 rounded-lg flex flex-col space-y-2 transition">
+                          <div className="flex justify-between items-center">
+                            <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${sub.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>{sub.status.replace('_', ' ')}</span>
+                            <span className="text-slate-400 text-xs font-mono">{new Date(sub.created_at).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm font-medium">
+                            <span className="text-slate-300">Score: {sub.score}/100</span>
+                            <span className="text-slate-400 text-xs">{sub.language}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -391,12 +474,12 @@ const CodingInterviewPage = () => {
           </div>
 
           {/* Execution Results Panel */}
-          {(isRunning || executionResult || executionError) && (
+          {(isRunning || isSubmitting || executionResult || submissionResult || executionError) && (
             <div className="border-t border-slate-800 bg-slate-900 max-h-[40%] overflow-y-auto p-4 space-y-3">
-              {isRunning && (
+              {(isRunning || isSubmitting) && (
                 <div className="flex items-center space-x-3 text-blue-400 text-sm font-medium py-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400" />
-                  <span>Executing code in isolated environment...</span>
+                  <span>{isRunning ? 'Executing code in isolated environment...' : 'Evaluating submission...'}</span>
                 </div>
               )}
 
@@ -407,6 +490,46 @@ const CodingInterviewPage = () => {
                     <div className="font-semibold text-red-300">Execution Error</div>
                     <div className="mt-1">{executionError}</div>
                   </div>
+                </div>
+              )}
+
+              {submissionResult && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Submission Result</span>
+                      <span className={`px-2 py-0.5 text-xs rounded font-bold uppercase ${
+                        submissionResult.status === 'accepted' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                      }`}>
+                        {submissionResult.status.replace('_', ' ')}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-4 text-center py-2">
+                    <div className="bg-slate-950 border border-slate-800 rounded-lg p-3">
+                      <div className="text-xs text-slate-500 uppercase font-bold mb-1">Score</div>
+                      <div className={`text-xl font-mono font-bold ${submissionResult.score === 100 ? 'text-emerald-400' : 'text-amber-400'}`}>{submissionResult.score} / 100</div>
+                    </div>
+                    <div className="bg-slate-950 border border-slate-800 rounded-lg p-3">
+                      <div className="text-xs text-slate-500 uppercase font-bold mb-1">Tests Passed</div>
+                      <div className="text-xl font-mono font-bold text-slate-300">{submissionResult.passed_tests} / {submissionResult.total_tests}</div>
+                    </div>
+                    <div className="bg-slate-950 border border-slate-800 rounded-lg p-3">
+                      <div className="text-xs text-slate-500 uppercase font-bold mb-1">Runtime</div>
+                      <div className="text-xl font-mono font-bold text-blue-400">{submissionResult.execution_time_ms || 0} ms</div>
+                    </div>
+                  </div>
+                  
+                  {submissionResult.error_message && (
+                    <div className="bg-slate-950 border border-rose-900/50 p-3 rounded-lg text-xs font-mono text-rose-300 whitespace-pre-wrap max-h-36 overflow-y-auto mt-3">
+                      <div className="text-rose-400 font-bold font-sans mb-1 flex items-center space-x-1.5">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        <span>ERROR DETAILS:</span>
+                      </div>
+                      {submissionResult.error_message}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -537,10 +660,11 @@ const CodingInterviewPage = () => {
 
               <button
                 onClick={handleSubmitCode}
-                className="flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition"
+                disabled={isSubmitting || isRunning}
+                className="flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
-                <span>Submit Code</span>
+                <span>{isSubmitting ? 'Submitting...' : 'Submit Code'}</span>
               </button>
             </div>
           </div>

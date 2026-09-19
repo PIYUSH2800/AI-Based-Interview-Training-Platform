@@ -212,3 +212,70 @@ def test_hidden_test_data_privacy(mock_get_executor):
             # Hidden test case must NOT return input or expected output
             assert result["input"] is None
             assert result["expected_output"] is None
+
+def test_unauthenticated_submit_rejected():
+    response = client.post("/api/coding/submit", json={
+        "problem_id": 1,
+        "language": "python",
+        "code": "print('hello')"
+    })
+    assert response.status_code == 401
+
+@patch("app.api.coding_routes.get_code_executor", return_value=MockCodeExecutor())
+def test_submit_success_score(mock_get_executor):
+    # Test valid submission giving 100 score
+    response = client.post("/api/coding/submit", json={
+        "problem_id": 1,
+        "language": "python",
+        "code": "def twoSum(nums, target): return [0, 1]"  # Mock assumes success
+    }, headers=get_auth_headers())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "accepted"
+    assert data["score"] == 100
+    assert data["language"] == "python"
+    assert "source_code" in data
+    
+    # Store submission id for next test
+    sub_id = data["id"]
+    
+    # Test getting submission history
+    hist_resp = client.get("/api/coding/submissions", headers=get_auth_headers())
+    assert hist_resp.status_code == 200
+    hist_data = hist_resp.json()
+    assert len(hist_data) >= 1
+    assert hist_data[0]["id"] == sub_id
+    assert "source_code" not in hist_data[0]  # list should not have source code
+    
+    # Test getting specific submission details
+    detail_resp = client.get(f"/api/coding/submissions/{sub_id}", headers=get_auth_headers())
+    assert detail_resp.status_code == 200
+    detail_data = detail_resp.json()
+    assert detail_data["source_code"] == "def twoSum(nums, target): return [0, 1]"
+    
+    # Test user isolation: another user tries to fetch
+    other_token = create_access_token({"sub": "other@example.com"})
+    
+    # Create the other user directly in db
+    db = TestingSessionLocal()
+    from app.models.models import User
+    other_user = User(name="Other", email="other@example.com", password_hash="hash")
+    db.add(other_user)
+    db.commit()
+    db.close()
+    
+    iso_resp = client.get(f"/api/coding/submissions/{sub_id}", headers={"Authorization": f"Bearer {other_token}"})
+    assert iso_resp.status_code == 404
+
+@patch("app.api.coding_routes.get_code_executor", return_value=MockCodeExecutor())
+def test_submit_incorrect_score(mock_get_executor):
+    # Mock timeout will result in 0 passed
+    response = client.post("/api/coding/submit", json={
+        "problem_id": 1,
+        "language": "python",
+        "code": "def twoSum(nums, target):\n    while True: pass"
+    }, headers=get_auth_headers())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "timeout"
+    assert data["score"] == 0

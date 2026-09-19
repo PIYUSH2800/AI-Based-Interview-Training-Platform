@@ -213,4 +213,29 @@ class CodeRunResponse(BaseModel):
     error: Optional[str] = None
 
 
+class CodingSubmissionBase(BaseModel):
+    problem_id: int
+    language: str
+    status: str
+    score: float
+    passed_tests: int
+    total_tests: int
+    execution_time_ms: Optional[float] = None
+    error_message: Optional[str] = None
+
+class CodingSubmissionResponse(CodingSubmissionBase):
+    id: int
+    created_at: datetime
+    problem_title: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class CodingSubmissionDetail(CodingSubmissionResponse):
+    source_code: str
+    
+    class Config:
+        from_attributes = True
+
+
 

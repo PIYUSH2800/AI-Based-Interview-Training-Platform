@@ -17,6 +17,7 @@ class User(Base):
     profile = relationship("Profile", back_populates="user", uselist=False)
     interviews = relationship("Interview", back_populates="user")
     recommendations = relationship("Recommendation", back_populates="user")
+    coding_submissions = relationship("CodingSubmission", back_populates="user")
 
 
 class Profile(Base):
@@ -127,5 +128,25 @@ class TestCase(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     problem = relationship("CodingProblem", back_populates="test_cases")
+
+
+class CodingSubmission(Base):
+    __tablename__ = "coding_submissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    problem_id = Column(Integer, ForeignKey("coding_problems.id"))
+    language = Column(String)
+    source_code = Column(Text)
+    status = Column(String) # accepted, wrong_answer, compile_error, runtime_error, timeout, execution_error
+    score = Column(Float)
+    passed_tests = Column(Integer)
+    total_tests = Column(Integer)
+    execution_time_ms = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="coding_submissions")
+    problem = relationship("CodingProblem")
 
 

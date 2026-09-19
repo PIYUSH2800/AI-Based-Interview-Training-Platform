@@ -1,10 +1,10 @@
 import json
-from typing import List, Union
+from typing import List, Union, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.models.models import CodingProblem, TestCase, User
-from app.schemas.schemas import CodingProblemSummary, CodingProblemDetail, CodeRunRequest, CodeRunResponse
+from app.schemas.schemas import CodingProblemSummary, CodingProblemDetail, CodeRunRequest, CodeRunResponse, CodingSubmissionResponse, CodingSubmissionDetail
 from app.api.profile_routes import get_current_user
 from app.services.executor import get_code_executor, CODE_MAX_SOURCE_SIZE
 
@@ -379,4 +379,158 @@ def run_code(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Execution service error occurred"
         )
+
+
+@router.post("/submit", response_model=CodingSubmissionDetail)
+def submit_code(
+    payload: CodeRunRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    seed_problems_if_needed(db)
+
+    problem = db.query(CodingProblem).filter(CodingProblem.id == payload.problem_id).first()
+    if not problem:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coding problem not found")
+
+    supported_langs = json.loads(problem.supported_languages) if problem.supported_languages else ["python", "java", "cpp"]
+    lang_clean = payload.language.lower().strip()
+    if lang_clean not in supported_langs or lang_clean not in ["python", "java", "cpp"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported language '{payload.language}'.")
+
+    if not payload.code or not payload.code.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Code cannot be empty")
+
+    if len(payload.code.encode('utf-8')) > CODE_MAX_SOURCE_SIZE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Source code size exceeds maximum limit")
+
+    db_test_cases = db.query(TestCase).filter(TestCase.problem_id == problem.id).all()
+    test_cases_list = [{"id": tc.id, "input": tc.input, "expected_output": tc.expected_output, "is_sample": tc.is_sample} for tc in db_test_cases]
+
+    if not test_cases_list:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No test cases configured")
+
+    try:
+        executor = get_code_executor()
+        execution_result = executor.execute(code=payload.code, language=lang_clean, test_cases=test_cases_list)
+        
+        # Calculate score and determine status
+        passed = execution_result.get("passed", 0)
+        total = execution_result.get("total", len(test_cases_list))
+        exec_status = execution_result.get("status", "execution_error")
+        
+        score = round((passed / total) * 100) if total > 0 else 0
+        
+        if exec_status == "completed":
+            final_status = "accepted" if passed == total else "wrong_answer"
+        else:
+            final_status = exec_status
+
+        # Calculate execution time
+        total_time_ms = sum([r.get("execution_time_ms", 0) for r in execution_result.get("results", [])])
+
+        # Save submission
+        from app.models.models import CodingSubmission
+        submission = CodingSubmission(
+            user_id=current_user.id,
+            problem_id=problem.id,
+            language=lang_clean,
+            source_code=payload.code,
+            status=final_status,
+            score=score,
+            passed_tests=passed,
+            total_tests=total,
+            execution_time_ms=total_time_ms,
+            error_message=execution_result.get("error")
+        )
+        db.add(submission)
+        db.commit()
+        db.refresh(submission)
+        
+        # We don't expose hidden tests inputs/outputs, even in the execution results if it was passed through.
+        # But this is just saving the record. The submission detail will be returned.
+        
+        return {
+            "id": submission.id,
+            "problem_id": submission.problem_id,
+            "problem_title": problem.title,
+            "language": submission.language,
+            "status": submission.status,
+            "score": submission.score,
+            "passed_tests": submission.passed_tests,
+            "total_tests": submission.total_tests,
+            "execution_time_ms": submission.execution_time_ms,
+            "error_message": submission.error_message,
+            "created_at": submission.created_at,
+            "source_code": submission.source_code
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Execution service error occurred")
+
+
+@router.get("/submissions", response_model=List[CodingSubmissionResponse])
+def get_submissions(
+    problem_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.models import CodingSubmission
+    query = db.query(CodingSubmission).filter(CodingSubmission.user_id == current_user.id)
+    if problem_id:
+        query = query.filter(CodingSubmission.problem_id == problem_id)
+        
+    submissions = query.order_by(CodingSubmission.created_at.desc()).all()
+    
+    results = []
+    for sub in submissions:
+        prob = db.query(CodingProblem).filter(CodingProblem.id == sub.problem_id).first()
+        results.append({
+            "id": sub.id,
+            "problem_id": sub.problem_id,
+            "problem_title": prob.title if prob else None,
+            "language": sub.language,
+            "status": sub.status,
+            "score": sub.score,
+            "passed_tests": sub.passed_tests,
+            "total_tests": sub.total_tests,
+            "execution_time_ms": sub.execution_time_ms,
+            "error_message": sub.error_message,
+            "created_at": sub.created_at
+        })
+    return results
+
+
+@router.get("/submissions/{submission_id}", response_model=CodingSubmissionDetail)
+def get_submission_detail(
+    submission_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.models import CodingSubmission
+    submission = db.query(CodingSubmission).filter(
+        CodingSubmission.id == submission_id,
+        CodingSubmission.user_id == current_user.id
+    ).first()
+    
+    if not submission:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found or unauthorized")
+        
+    prob = db.query(CodingProblem).filter(CodingProblem.id == submission.problem_id).first()
+    
+    return {
+        "id": submission.id,
+        "problem_id": submission.problem_id,
+        "problem_title": prob.title if prob else None,
+        "language": submission.language,
+        "status": submission.status,
+        "score": submission.score,
+        "passed_tests": submission.passed_tests,
+        "total_tests": submission.total_tests,
+        "execution_time_ms": submission.execution_time_ms,
+        "error_message": submission.error_message,
+        "created_at": submission.created_at,
+        "source_code": submission.source_code
+    }
 
