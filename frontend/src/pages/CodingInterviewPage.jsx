@@ -35,6 +35,7 @@ const CodingInterviewPage = () => {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionResult, setSubmissionResult] = useState(null);
+  const [isFetchingFeedback, setIsFetchingFeedback] = useState(false);
   const [submissions, setSubmissions] = useState([]);
   const [leftTab, setLeftTab] = useState('problem');
 
@@ -203,6 +204,21 @@ const CodingInterviewPage = () => {
       }
     } catch (err) {
       console.error('Failed to fetch submission details:', err);
+    }
+  };
+
+  const handleGetFeedback = async () => {
+    if (!submissionResult || isFetchingFeedback) return;
+    setIsFetchingFeedback(true);
+    setNotice(null);
+    try {
+      const res = await api.post(`/coding/submissions/${submissionResult.id}/feedback`);
+      setSubmissionResult(prev => ({ ...prev, feedback: res.data }));
+    } catch (err) {
+      console.error("Failed to get feedback:", err);
+      setExecutionError(err.response?.data?.detail || 'Failed to get AI feedback');
+    } finally {
+      setIsFetchingFeedback(false);
     }
   };
 
@@ -528,6 +544,93 @@ const CodingInterviewPage = () => {
                         <span>ERROR DETAILS:</span>
                       </div>
                       {submissionResult.error_message}
+                    </div>
+                  )}
+
+                  {!submissionResult.feedback && (
+                    <div className="pt-2">
+                      <button 
+                        onClick={handleGetFeedback}
+                        disabled={isFetchingFeedback}
+                        className="w-full py-2 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 border border-indigo-600/50 rounded-lg text-xs font-bold uppercase tracking-wider transition disabled:opacity-50 flex items-center justify-center space-x-2"
+                      >
+                        {isFetchingFeedback ? (
+                          <>
+                            <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-indigo-400" />
+                            <span>Analyzing Code...</span>
+                          </>
+                        ) : (
+                          <span>Get AI Feedback</span>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {submissionResult.feedback && (
+                    <div className="mt-4 border border-indigo-900/50 rounded-lg bg-indigo-950/20 overflow-hidden text-sm">
+                      <div className="bg-indigo-900/40 px-4 py-2 border-b border-indigo-900/50 flex justify-between items-center">
+                        <span className="font-bold text-indigo-300">AI Code Feedback</span>
+                        <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-900/50 px-2 py-0.5 rounded">
+                          {submissionResult.feedback.provider}
+                        </span>
+                      </div>
+                      <div className="p-4 space-y-4 text-slate-300">
+                        <div>
+                          <div className="text-xs font-bold text-indigo-400 uppercase mb-1">Summary</div>
+                          <div className="text-sm leading-relaxed">{submissionResult.feedback.summary}</div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-slate-950/50 p-3 rounded border border-slate-800">
+                            <div className="text-xs font-bold text-emerald-400 uppercase mb-1">Time Complexity</div>
+                            <div className="font-mono text-sm">{submissionResult.feedback.time_complexity}</div>
+                          </div>
+                          <div className="bg-slate-950/50 p-3 rounded border border-slate-800">
+                            <div className="text-xs font-bold text-blue-400 uppercase mb-1">Space Complexity</div>
+                            <div className="font-mono text-sm">{submissionResult.feedback.space_complexity}</div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-bold text-indigo-400 uppercase mb-1">Correctness & Approach</div>
+                          <div className="text-sm leading-relaxed mb-2"><strong>Approach:</strong> {submissionResult.feedback.approach}</div>
+                          <div className="text-sm leading-relaxed"><strong>Correctness:</strong> {submissionResult.feedback.correctness}</div>
+                        </div>
+
+                        {submissionResult.feedback.strengths?.length > 0 && (
+                          <div>
+                            <div className="text-xs font-bold text-emerald-400 uppercase mb-1 flex items-center"><CheckCircle2 className="h-3 w-3 mr-1"/> Strengths</div>
+                            <ul className="list-disc pl-4 space-y-1 text-sm">
+                              {submissionResult.feedback.strengths.map((s, i) => <li key={i}>{s}</li>)}
+                            </ul>
+                          </div>
+                        )}
+
+                        {(submissionResult.feedback.issues?.length > 0 || submissionResult.feedback.improvements?.length > 0) && (
+                          <div>
+                            <div className="text-xs font-bold text-amber-400 uppercase mb-1 flex items-center"><AlertCircle className="h-3 w-3 mr-1"/> Issues & Improvements</div>
+                            <ul className="list-disc pl-4 space-y-1 text-sm">
+                              {[...(submissionResult.feedback.issues || []), ...(submissionResult.feedback.improvements || [])].map((iss, i) => <li key={i}>{iss}</li>)}
+                            </ul>
+                          </div>
+                        )}
+
+                        {submissionResult.feedback.better_approach && (
+                          <div className="bg-blue-950/20 border border-blue-900/30 p-3 rounded">
+                            <div className="text-xs font-bold text-blue-400 uppercase mb-1">Better Approach</div>
+                            <div className="text-sm leading-relaxed">{submissionResult.feedback.better_approach}</div>
+                          </div>
+                        )}
+                        
+                        {submissionResult.feedback.interview_tips?.length > 0 && (
+                          <div className="bg-purple-950/20 border border-purple-900/30 p-3 rounded">
+                            <div className="text-xs font-bold text-purple-400 uppercase mb-1">Interview Tips</div>
+                            <ul className="list-disc pl-4 space-y-1 text-sm">
+                              {submissionResult.feedback.interview_tips.map((t, i) => <li key={i}>{t}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

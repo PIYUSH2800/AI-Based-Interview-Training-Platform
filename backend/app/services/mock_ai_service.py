@@ -93,3 +93,18 @@ def evaluate_answer_mock(question_text: str, answer_text: str) -> dict:
         "strengths": strengths,
         "improvements": improvements
     }
+
+def generate_coding_feedback_mock(problem_title: str, language: str, source_code: str, status: str, score: float, passed: int, total: int) -> dict:
+    """Generates mock AI coding feedback."""
+    return {
+        "summary": "This is mock AI feedback. In production, Gemini provides a full analysis of your code.",
+        "approach": f"Based on the code, you attempted to solve '{problem_title}' using {language}.",
+        "correctness": f"The submission scored {score}/100, passing {passed}/{total} tests. Status: {status}.",
+        "time_complexity": "O(N) (Mock estimation)",
+        "space_complexity": "O(N) (Mock estimation)",
+        "strengths": ["Clear syntax structure", "Valid language usage"],
+        "issues": ["Mock issue: Consider edge cases"],
+        "improvements": ["Mock improvement: Optimize internal loops"],
+        "better_approach": "A mock better approach would be to use a hash map or built-in optimization.",
+        "interview_tips": ["Always explain your complexity to the interviewer"]
+    }

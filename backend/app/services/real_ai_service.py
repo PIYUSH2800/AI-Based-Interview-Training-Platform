@@ -6,7 +6,7 @@ try:
 except ImportError:
     genai = None
 
-from app.services.prompts import QUESTION_GENERATION_PROMPT, ANSWER_EVALUATION_PROMPT
+from app.services.prompts import QUESTION_GENERATION_PROMPT, ANSWER_EVALUATION_PROMPT, CODING_FEEDBACK_PROMPT
 
 class RealAIService:
     def __init__(self):
@@ -146,3 +146,57 @@ class RealAIService:
             "strengths": [str(s) for s in strengths],
             "improvements": [str(i) for i in improvements]
         }
+
+    def generate_coding_feedback(
+        self,
+        problem_title: str,
+        problem_description: str,
+        difficulty: str,
+        category: str,
+        language: str,
+        source_code: str,
+        status: str,
+        score: float,
+        passed_tests: int,
+        total_tests: int
+    ) -> dict:
+        if not self.is_configured():
+            raise RuntimeError("Gemini API key is not configured.")
+
+        prompt = CODING_FEEDBACK_PROMPT.format(
+            title=problem_title,
+            description=problem_description,
+            difficulty=difficulty,
+            category=category,
+            language=language,
+            source_code=source_code,
+            status=status,
+            score=score,
+            passed_tests=passed_tests,
+            total_tests=total_tests
+        )
+
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+        )
+
+        if not response or not response.text:
+            raise ValueError("Empty response received from Gemini model.")
+
+        parsed = self._clean_and_parse_json(response.text)
+        
+        # Ensure array fields are actually lists of strings
+        for list_field in ["strengths", "issues", "improvements", "interview_tips"]:
+            val = parsed.get(list_field, [])
+            if not isinstance(val, list):
+                parsed[list_field] = [str(val)]
+            else:
+                parsed[list_field] = [str(v) for v in val]
+
+        # Ensure string fields are strings
+        for str_field in ["summary", "approach", "correctness", "time_complexity", "space_complexity", "better_approach"]:
+            val = parsed.get(str_field, "")
+            parsed[str_field] = str(val).strip()
+
+        return parsed

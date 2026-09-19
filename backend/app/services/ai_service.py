@@ -1,7 +1,7 @@
 import os
 import logging
 from app.services.real_ai_service import RealAIService
-from app.services.mock_ai_service import generate_question_mock, evaluate_answer_mock
+from app.services.mock_ai_service import generate_question_mock, evaluate_answer_mock, generate_coding_feedback_mock
 
 logger = logging.getLogger("ai_service")
 
@@ -150,6 +150,54 @@ class AIService:
             "weaknesses": list(set(weaknesses))[:3],
             "recommendations": recommendations
         }
+
+    def generate_coding_feedback(
+        self,
+        problem_title: str,
+        problem_description: str,
+        difficulty: str,
+        category: str,
+        language: str,
+        source_code: str,
+        status: str,
+        score: float,
+        passed_tests: int,
+        total_tests: int
+    ) -> dict:
+        if self.real_ai.is_configured() and self.is_ai_enabled():
+            try:
+                feedback = self.real_ai.generate_coding_feedback(
+                    problem_title=problem_title,
+                    problem_description=problem_description,
+                    difficulty=difficulty,
+                    category=category,
+                    language=language,
+                    source_code=source_code,
+                    status=status,
+                    score=score,
+                    passed_tests=passed_tests,
+                    total_tests=total_tests
+                )
+                logger.info("Generated coding feedback via Gemini API.")
+                feedback["provider"] = "gemini"
+                return feedback
+            except Exception as e:
+                logger.warning(f"[AI Fallback] Gemini coding feedback failed ({e}). Falling back to Mock AI.")
+                if not self.is_fallback_enabled():
+                    raise e
+
+        # Fallback to Mock AI
+        feedback = generate_coding_feedback_mock(
+            problem_title=problem_title,
+            language=language,
+            source_code=source_code,
+            status=status,
+            score=score,
+            passed=passed_tests,
+            total=total_tests
+        )
+        feedback["provider"] = "mock"
+        return feedback
 
 
 # Singleton instance

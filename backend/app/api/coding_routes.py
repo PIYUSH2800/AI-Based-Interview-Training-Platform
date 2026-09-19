@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.models.models import CodingProblem, TestCase, User
-from app.schemas.schemas import CodingProblemSummary, CodingProblemDetail, CodeRunRequest, CodeRunResponse, CodingSubmissionResponse, CodingSubmissionDetail
+from app.schemas.schemas import CodingProblemSummary, CodingProblemDetail, CodeRunRequest, CodeRunResponse, CodingSubmissionResponse, CodingSubmissionDetail, CodingFeedbackResponse
 from app.api.profile_routes import get_current_user
 from app.services.executor import get_code_executor, CODE_MAX_SOURCE_SIZE
 
@@ -519,7 +519,7 @@ def get_submission_detail(
         
     prob = db.query(CodingProblem).filter(CodingProblem.id == submission.problem_id).first()
     
-    return {
+    result = {
         "id": submission.id,
         "problem_id": submission.problem_id,
         "problem_title": prob.title if prob else None,
@@ -533,4 +533,115 @@ def get_submission_detail(
         "created_at": submission.created_at,
         "source_code": submission.source_code
     }
+    
+    if submission.feedback:
+        result["feedback"] = {
+            "id": submission.feedback.id,
+            "submission_id": submission.feedback.submission_id,
+            "summary": submission.feedback.summary,
+            "approach": submission.feedback.approach,
+            "correctness": submission.feedback.correctness,
+            "time_complexity": submission.feedback.time_complexity,
+            "space_complexity": submission.feedback.space_complexity,
+            "strengths": json.loads(submission.feedback.strengths) if submission.feedback.strengths else [],
+            "issues": json.loads(submission.feedback.issues) if submission.feedback.issues else [],
+            "improvements": json.loads(submission.feedback.improvements) if submission.feedback.improvements else [],
+            "better_approach": submission.feedback.better_approach,
+            "interview_tips": json.loads(submission.feedback.interview_tips) if submission.feedback.interview_tips else [],
+            "provider": submission.feedback.provider,
+            "created_at": submission.feedback.created_at
+        }
+        
+    return result
+
+@router.post("/submissions/{submission_id}/feedback", response_model=CodingFeedbackResponse)
+def get_coding_feedback(
+    submission_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.models import CodingSubmission, CodingFeedback
+    from app.services.ai_service import ai_service
+    
+    submission = db.query(CodingSubmission).filter(
+        CodingSubmission.id == submission_id,
+        CodingSubmission.user_id == current_user.id
+    ).first()
+    
+    if not submission:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found or unauthorized")
+        
+    if submission.feedback:
+        return {
+            "id": submission.feedback.id,
+            "submission_id": submission.feedback.submission_id,
+            "summary": submission.feedback.summary,
+            "approach": submission.feedback.approach,
+            "correctness": submission.feedback.correctness,
+            "time_complexity": submission.feedback.time_complexity,
+            "space_complexity": submission.feedback.space_complexity,
+            "strengths": json.loads(submission.feedback.strengths) if submission.feedback.strengths else [],
+            "issues": json.loads(submission.feedback.issues) if submission.feedback.issues else [],
+            "improvements": json.loads(submission.feedback.improvements) if submission.feedback.improvements else [],
+            "better_approach": submission.feedback.better_approach,
+            "interview_tips": json.loads(submission.feedback.interview_tips) if submission.feedback.interview_tips else [],
+            "provider": submission.feedback.provider,
+            "created_at": submission.feedback.created_at
+        }
+        
+    prob = db.query(CodingProblem).filter(CodingProblem.id == submission.problem_id).first()
+    
+    try:
+        feedback_data = ai_service.generate_coding_feedback(
+            problem_title=prob.title,
+            problem_description=prob.description,
+            difficulty=prob.difficulty,
+            category=prob.category,
+            language=submission.language,
+            source_code=submission.source_code,
+            status=submission.status,
+            score=submission.score,
+            passed_tests=submission.passed_tests,
+            total_tests=submission.total_tests
+        )
+        
+        feedback = CodingFeedback(
+            submission_id=submission.id,
+            summary=feedback_data.get("summary", ""),
+            approach=feedback_data.get("approach", ""),
+            correctness=feedback_data.get("correctness", ""),
+            time_complexity=feedback_data.get("time_complexity", ""),
+            space_complexity=feedback_data.get("space_complexity", ""),
+            strengths=json.dumps(feedback_data.get("strengths", [])),
+            issues=json.dumps(feedback_data.get("issues", [])),
+            improvements=json.dumps(feedback_data.get("improvements", [])),
+            better_approach=feedback_data.get("better_approach", ""),
+            interview_tips=json.dumps(feedback_data.get("interview_tips", [])),
+            provider=feedback_data.get("provider", "mock")
+        )
+        
+        db.add(feedback)
+        db.commit()
+        db.refresh(feedback)
+        
+        return {
+            "id": feedback.id,
+            "submission_id": feedback.submission_id,
+            "summary": feedback.summary,
+            "approach": feedback.approach,
+            "correctness": feedback.correctness,
+            "time_complexity": feedback.time_complexity,
+            "space_complexity": feedback.space_complexity,
+            "strengths": json.loads(feedback.strengths) if feedback.strengths else [],
+            "issues": json.loads(feedback.issues) if feedback.issues else [],
+            "improvements": json.loads(feedback.improvements) if feedback.improvements else [],
+            "better_approach": feedback.better_approach,
+            "interview_tips": json.loads(feedback.interview_tips) if feedback.interview_tips else [],
+            "provider": feedback.provider,
+            "created_at": feedback.created_at
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to generate AI feedback: {str(e)}")
 

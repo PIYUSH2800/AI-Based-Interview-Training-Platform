@@ -231,8 +231,33 @@ class CodingSubmissionResponse(CodingSubmissionBase):
     class Config:
         from_attributes = True
 
+class CodingFeedbackBase(BaseModel):
+    summary: str
+    approach: str
+    correctness: str
+    time_complexity: str
+    space_complexity: str
+    strengths: List[str]
+    issues: List[str]
+    improvements: List[str]
+    better_approach: str
+    interview_tips: List[str]
+
+class CodingFeedbackCreate(CodingFeedbackBase):
+    provider: str
+
+class CodingFeedbackResponse(CodingFeedbackBase):
+    id: int
+    submission_id: int
+    provider: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
 class CodingSubmissionDetail(CodingSubmissionResponse):
     source_code: str
+    feedback: Optional[CodingFeedbackResponse] = None
     
     class Config:
         from_attributes = True

@@ -148,5 +148,24 @@ class CodingSubmission(Base):
 
     user = relationship("User", back_populates="coding_submissions")
     problem = relationship("CodingProblem")
+    feedback = relationship("CodingFeedback", back_populates="submission", uselist=False, cascade="all, delete-orphan")
 
+class CodingFeedback(Base):
+    __tablename__ = "coding_feedback"
 
+    id = Column(Integer, primary_key=True, index=True)
+    submission_id = Column(Integer, ForeignKey("coding_submissions.id"), unique=True)
+    summary = Column(Text)
+    approach = Column(Text)
+    correctness = Column(Text)
+    time_complexity = Column(Text)
+    space_complexity = Column(Text)
+    strengths = Column(Text) # JSON string
+    issues = Column(Text) # JSON string
+    improvements = Column(Text) # JSON string
+    better_approach = Column(Text)
+    interview_tips = Column(Text) # JSON string
+    provider = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    submission = relationship("CodingSubmission", back_populates="feedback")
