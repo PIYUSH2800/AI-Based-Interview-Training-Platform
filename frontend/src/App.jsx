@@ -11,6 +11,7 @@ import InterviewSetupPage from './pages/InterviewSetupPage';
 import ActiveInterviewPage from './pages/ActiveInterviewPage';
 import InterviewResultPage from './pages/InterviewResultPage';
 import InterviewHistoryPage from './pages/InterviewHistoryPage';
+import CodingInterviewPage from './pages/CodingInterviewPage';
 import DashboardLayout from './layouts/DashboardLayout';
 
 const ProtectedRoute = ({ children }) => {
@@ -36,6 +37,13 @@ function App() {
               </DashboardLayout>
             </ProtectedRoute>
           } />
+          <Route path="/coding" element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <CodingInterviewPage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
           <Route path="/history" element={
             <ProtectedRoute>
               <DashboardLayout>
@@ -43,6 +51,7 @@ function App() {
               </DashboardLayout>
             </ProtectedRoute>
           } />
+
           <Route path="/profile" element={
             <ProtectedRoute>
               <DashboardLayout>

@@ -1,7 +1,8 @@
 import React, { useContext } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { LayoutDashboard, User, PlayCircle, LogOut, FileText } from 'lucide-react';
+import { LayoutDashboard, User, PlayCircle, LogOut, FileText, Code } from 'lucide-react';
+import api from '../services/api';
 
 const DashboardLayout = ({ children }) => {
   const { user, logout } = useContext(AuthContext);
@@ -17,9 +18,11 @@ const DashboardLayout = ({ children }) => {
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Practice', path: '/setup', icon: PlayCircle },
+    { name: 'Coding Interview', path: '/coding', icon: Code },
     { name: 'History', path: '/history', icon: FileText },
     { name: 'Profile', path: '/profile', icon: User },
   ];
+
 
   return (
     <div className="flex h-screen bg-slate-50">

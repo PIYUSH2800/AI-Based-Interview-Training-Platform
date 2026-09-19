@@ -1,7 +1,11 @@
 import os
 import re
 import json
-from google import genai
+try:
+    from google import genai
+except ImportError:
+    genai = None
+
 from app.services.prompts import QUESTION_GENERATION_PROMPT, ANSWER_EVALUATION_PROMPT
 
 class RealAIService:
@@ -9,11 +13,12 @@ class RealAIService:
         self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
         self.model_name = os.getenv("AI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
         self.client = None
-        if self.api_key:
+        if self.api_key and genai is not None:
             try:
                 self.client = genai.Client(api_key=self.api_key)
             except Exception as e:
                 print(f"Warning: Failed to initialize Gemini Client: {e}")
+
 
     def is_configured(self) -> bool:
         return bool(self.api_key and self.client is not None)

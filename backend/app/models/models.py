@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Text, DateTime
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Text, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.database import Base
@@ -96,3 +96,36 @@ class Recommendation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="recommendations")
+
+
+class CodingProblem(Base):
+    __tablename__ = "coding_problems"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, index=True)
+    slug = Column(String, unique=True, index=True)
+    difficulty = Column(String) # Easy, Medium, Hard
+    category = Column(String) # Arrays, Strings, Stack, etc.
+    description = Column(Text)
+    examples = Column(Text) # JSON string of examples
+    constraints = Column(Text) # JSON string of constraints
+    starter_code = Column(Text) # JSON string mapping language to code template
+    supported_languages = Column(Text) # JSON string list of supported languages
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    test_cases = relationship("TestCase", back_populates="problem", cascade="all, delete-orphan")
+
+
+class TestCase(Base):
+    __tablename__ = "test_cases"
+
+    id = Column(Integer, primary_key=True, index=True)
+    problem_id = Column(Integer, ForeignKey("coding_problems.id"))
+    input = Column(Text)
+    expected_output = Column(Text)
+    is_sample = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    problem = relationship("CodingProblem", back_populates="test_cases")
+
+

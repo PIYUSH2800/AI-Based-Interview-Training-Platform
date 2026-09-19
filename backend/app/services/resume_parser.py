@@ -1,8 +1,16 @@
 import os
 import re
 import uuid
-import pypdf
-import docx
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
+
+try:
+    import docx
+except ImportError:
+    docx = None
+
 
 def extract_text_from_file(file_path: str) -> str:
     """Extract readable plain text from a PDF or DOCX file."""
@@ -12,7 +20,7 @@ def extract_text_from_file(file_path: str) -> str:
     ext = os.path.splitext(file_path)[1].lower()
     text = ""
     
-    if ext == ".pdf":
+    if ext == ".pdf" and pypdf is not None:
         try:
             reader = pypdf.PdfReader(file_path)
             for page in reader.pages:
@@ -22,9 +30,10 @@ def extract_text_from_file(file_path: str) -> str:
         except Exception as e:
             print(f"Error reading PDF {file_path}: {e}")
             
-    elif ext in [".docx", ".doc"]:
+    elif ext in [".docx", ".doc"] and docx is not None:
         try:
             doc = docx.Document(file_path)
+
             for p in doc.paragraphs:
                 if p.text:
                     text += p.text + "\n"

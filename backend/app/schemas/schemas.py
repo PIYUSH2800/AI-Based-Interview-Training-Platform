@@ -145,3 +145,72 @@ class InterviewDetail(Interview):
     class Config:
         from_attributes = True
 
+
+# --- Coding Problem Schemas ---
+class CodingProblemSummary(BaseModel):
+    id: int
+    title: str
+    slug: str
+    difficulty: str
+    category: str
+
+    class Config:
+        from_attributes = True
+
+class CodingProblemDetail(BaseModel):
+    id: int
+    title: str
+    slug: str
+    difficulty: str
+    category: str
+    description: str
+    examples: str  # JSON formatted string or list
+    constraints: str  # JSON formatted string or list
+    starter_code: str  # JSON formatted string or dict
+    supported_languages: str  # JSON formatted string or list
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# --- Code Execution Schemas ---
+class TestCaseSchema(BaseModel):
+    id: int
+    problem_id: int
+    input: str
+    expected_output: str
+    is_sample: bool
+
+    class Config:
+        from_attributes = True
+
+
+class CodeRunRequest(BaseModel):
+    problem_id: int
+    language: str
+    code: str
+
+
+class TestCaseResult(BaseModel):
+    test_case_id: Optional[int] = None
+    is_sample: bool = False
+    passed: bool
+    input: Optional[str] = None
+    expected_output: Optional[str] = None
+    output: Optional[str] = None
+    execution_time_ms: Optional[float] = None
+    error: Optional[str] = None
+
+
+class CodeRunResponse(BaseModel):
+    status: str  # completed, compile_error, runtime_error, timeout, execution_error
+    language: str
+    passed: int
+    failed: int
+    total: int
+    results: List[TestCaseResult] = []
+    error: Optional[str] = None
+
+
+
