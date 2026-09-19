@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { Mic, Square, Send, ChevronRight, Clock } from 'lucide-react';
+import { Mic, Square, Send, ChevronRight, Clock, AlertCircle } from 'lucide-react';
+import useSpeechRecognition from '../hooks/useSpeechRecognition';
 
 const ActiveInterviewPage = () => {
   const { id } = useParams();
@@ -12,9 +13,21 @@ const ActiveInterviewPage = () => {
   const [questionText, setQuestionText] = useState('Loading your first question...');
   const [answer, setAnswer] = useState('');
   const [isEvaluating, setIsEvaluating] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [timeLeft, setTimeLeft] = useState(120); // 2 mins per question
   const [startTime] = useState(Date.now());
+
+  const handleFinalTranscript = useCallback((text) => {
+    setAnswer(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + text);
+  }, []);
+
+  const {
+    isSupported,
+    isRecording,
+    interimTranscript,
+    error: speechError,
+    startRecording,
+    stopRecording
+  } = useSpeechRecognition(handleFinalTranscript);
 
   useEffect(() => {
     const fetchInterview = async () => {
@@ -66,6 +79,10 @@ const ActiveInterviewPage = () => {
     if (!answer.trim()) return;
     setIsEvaluating(true);
     
+    if (isRecording) {
+      stopRecording();
+    }
+    
     try {
       // 1. Evaluate answer via AI
       const evalRes = await api.post('/ai/evaluate-answer', {
@@ -110,8 +127,11 @@ const ActiveInterviewPage = () => {
 
 
   const toggleRecording = () => {
-    setIsRecording(!isRecording);
-    // In a real app, integrate SpeechRecognition API here
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
   };
 
   if (!interview) return <div className="p-8">Loading interview environment...</div>;
@@ -143,21 +163,42 @@ const ActiveInterviewPage = () => {
 
         {/* Answer Input */}
         <div className="space-y-4">
-          <textarea
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="Type your answer here, or use the microphone to speak..."
-            className="w-full h-48 p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-lg leading-relaxed"
-          ></textarea>
+          <div className="relative">
+            <textarea
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder="Type your answer here, or use the microphone to speak..."
+              className="w-full h-48 p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-lg leading-relaxed"
+            ></textarea>
+            {interimTranscript && (
+              <div className="absolute bottom-4 left-4 right-4 text-slate-400 italic text-lg leading-relaxed pointer-events-none">
+                {interimTranscript}
+              </div>
+            )}
+          </div>
+          
+          {speechError && (
+            <div className="flex items-center space-x-2 text-red-500 text-sm bg-red-50 p-2 rounded-lg">
+              <AlertCircle size={16} />
+              <span>{speechError}</span>
+            </div>
+          )}
           
           <div className="flex justify-between items-center pt-2">
-            <button 
-              onClick={toggleRecording}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-full font-medium transition ${isRecording ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-            >
-              {isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={18} />}
-              <span>{isRecording ? 'Stop Recording' : 'Voice Input'}</span>
-            </button>
+            {!isSupported ? (
+              <div className="text-slate-500 text-sm bg-slate-100 px-4 py-2 rounded-lg border border-slate-200">
+                Voice input is not supported in this browser. Please type your answer.
+              </div>
+            ) : (
+              <button 
+                onClick={toggleRecording}
+                className={`flex items-center space-x-2 px-6 py-3 rounded-full font-medium transition ${isRecording ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                title={isRecording ? 'Stop Recording' : 'Start Voice Input'}
+              >
+                {isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={18} />}
+                <span>{isRecording ? 'Stop Voice Input' : 'Start Voice Input'}</span>
+              </button>
+            )}
 
             <button 
               onClick={handleSubmitAnswer}
