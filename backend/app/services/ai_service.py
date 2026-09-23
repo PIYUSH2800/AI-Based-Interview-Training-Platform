@@ -1,7 +1,13 @@
 import os
 import logging
 from app.services.real_ai_service import RealAIService
-from app.services.mock_ai_service import generate_question_mock, evaluate_answer_mock, generate_coding_feedback_mock, generate_communication_feedback_mock
+from app.services.mock_ai_service import (
+    generate_question_mock,
+    evaluate_answer_mock,
+    generate_coding_feedback_mock,
+    generate_communication_feedback_mock,
+    generate_adaptive_question_mock,
+)
 
 logger = logging.getLogger("ai_service")
 
@@ -224,6 +230,62 @@ class AIService:
                     raise e
 
         return generate_communication_feedback_mock(question_text, answer_text)
+
+    def generate_adaptive_question(
+        self,
+        job_role: str,
+        interview_type: str,
+        difficulty: str,
+        skills: str = "",
+        candidate_context: dict = None,
+        previous_questions: list = None,
+        last_answer_context: dict = None,
+        topics_covered: list = None,
+        under_covered_topics: list = None,
+        weak_areas: list = None,
+        interview_strategy_guidance: str = "",
+        category: str = None,
+    ) -> dict:
+        """
+        Generate an adaptive next question using Real Gemini AI with Mock fallback.
+        Returns dict with keys: question, difficulty, topic, category, reason.
+        """
+        if self.real_ai.is_configured() and self.is_ai_enabled():
+            try:
+                result = self.real_ai.generate_adaptive_question(
+                    job_role=job_role,
+                    interview_type=interview_type,
+                    difficulty=difficulty,
+                    skills=skills,
+                    candidate_context=candidate_context,
+                    previous_questions=previous_questions,
+                    last_answer_context=last_answer_context,
+                    topics_covered=topics_covered,
+                    under_covered_topics=under_covered_topics,
+                    weak_areas=weak_areas,
+                    interview_strategy_guidance=interview_strategy_guidance,
+                )
+                logger.info("Generated adaptive question via Gemini API.")
+                return result
+            except Exception as e:
+                logger.warning(
+                    f"[AI Fallback] Gemini adaptive question generation failed ({e}). Falling back to Mock AI."
+                )
+                if not self.is_fallback_enabled():
+                    raise e
+
+        # Fallback to Mock AI
+        return generate_adaptive_question_mock(
+            job_role=job_role,
+            interview_type=interview_type,
+            difficulty=difficulty,
+            skills=skills,
+            previous_questions=previous_questions,
+            last_answer_context=last_answer_context,
+            topics_covered=topics_covered,
+            under_covered_topics=under_covered_topics,
+            category=category,
+        )
 
 
 # Singleton instance

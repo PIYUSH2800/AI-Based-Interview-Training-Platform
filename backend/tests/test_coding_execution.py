@@ -13,32 +13,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.main import app
-
-from app.database.database import Base, get_db
 from app.models.models import User, CodingProblem, TestCase
 from app.auth.auth import create_access_token, get_password_hash
 from app.services.executor import FORCE_MOCK_EXECUTOR, MockCodeExecutor
 from unittest.mock import patch
-
-# Use in-memory SQLite database for test isolation
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_coding.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-def override_get_db():
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
+from tests.conftest import TestingSessionLocal
 
 @pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
+def seed_test_user():
     db = TestingSessionLocal()
-    # Ensure test user
     user = db.query(User).filter(User.email == "testuser@example.com").first()
     if not user:
         user = User(
@@ -52,12 +35,6 @@ def setup_db():
         db.commit()
     db.close()
     yield
-    Base.metadata.drop_all(bind=engine)
-    if os.path.exists("./test_coding.db"):
-        try:
-            os.remove("./test_coding.db")
-        except Exception:
-            pass
 
 client = TestClient(app)
 

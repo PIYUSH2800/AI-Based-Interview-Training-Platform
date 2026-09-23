@@ -135,3 +135,52 @@ Return ONLY a valid JSON object with this exact structure:
 
 Generate the JSON response now:
 """
+
+ADAPTIVE_QUESTION_PROMPT = """
+You are an expert interviewer conducting a strategic, adaptive interview for a candidate.
+
+Candidate & Interview Context:
+- Target Job Role: {job_role}
+- Interview Type: {interview_type}
+- Target Difficulty Level: {difficulty}
+- Stated Skills: {skills}
+- Education: {education}
+- Experience Level: {experience_level}
+- Candidate Resume Summary: {resume_context}
+
+Interview Strategy Guidance for {interview_type}:
+{interview_strategy_guidance}
+
+Current Session Coverage State:
+- Topics Already Covered: {topics_covered_text}
+- Under-Covered Skills/Topics: {under_covered_topics_text}
+- Identified Weak Areas to Address: {weak_areas_text}
+
+Previous Questions Asked in Session:
+{previous_questions_text}
+
+Candidate's Latest Answer Performance & Feedback:
+{last_answer_context}
+
+Task:
+Generate EXACTLY ONE follow-up or next interview question that balances adaptive performance with strategic topic coverage.
+
+Requirements:
+1. Return ONLY a valid JSON object.
+2. Do not include markdown headers, HTML, or prose outside the JSON object.
+3. The next question MUST NOT repeat or closely rephrase any of the previously asked questions.
+4. Maintain balanced topic distribution: prioritize under-covered topics or candidate skills if the previous topic has already been covered multiple times.
+5. If addressing weak areas, do so constructively without repeatedly hammering the exact same question.
+6. The JSON must follow this exact structure:
+{{
+  "question": "The generated next interview question string here",
+  "difficulty": "{difficulty}",
+  "topic": "Primary topic or skill covered by this question e.g. Python, SQL, Communication, Scalability",
+  "category": "{interview_type}",
+  "reason": "Brief internal explanation of why this question was selected based on performance and coverage strategy"
+}}
+
+Generate the JSON response now:
+"""
+
+

@@ -144,3 +144,74 @@ def generate_communication_feedback_mock(question_text: str, answer_text: str) -
             "suggestion": "Review whether any sentences can be condensed without losing meaning.",
         }
 
+
+def generate_adaptive_question_mock(
+    job_role: str,
+    interview_type: str,
+    difficulty: str,
+    skills: str = "",
+    previous_questions: list = None,
+    last_answer_context: dict = None,
+    topics_covered: list = None,
+    under_covered_topics: list = None,
+    weak_areas: list = None,
+    category: str = None,
+) -> dict:
+    """
+    Generates a fallback mock adaptive question avoiding previously asked questions
+    and prioritizing under-covered topics, weak areas, and candidate skills.
+    Returns a dict with 'question', 'difficulty', 'topic', 'category', and 'reason'.
+    """
+    prev_set = set()
+    if previous_questions:
+        for q in previous_questions:
+            prev_set.add(" ".join(q.lower().strip().split()))
+
+    role_qs = QUESTIONS_BANK.get(job_role, GENERIC_QUESTIONS)
+    all_candidates = role_qs + GENERIC_QUESTIONS
+
+    # Filter candidates to avoid previously asked questions
+    available = [
+        q for q in all_candidates
+        if " ".join(q.lower().strip().split()) not in prev_set
+    ]
+
+    selected_topic = job_role
+    selected_q = None
+
+    # Priority target topics: weak areas first, then under-covered topics, then candidate skills
+    candidate_topics = (weak_areas or []) + (under_covered_topics or []) + ([s.strip() for s in skills.split(",") if s.strip()] if skills else [])
+
+    if candidate_topics:
+        target_top = candidate_topics[0]
+        # Search available questions matching target_top
+        matches = [q for q in available if target_top.lower() in q.lower()]
+        if matches:
+            selected_q = matches[0]
+            selected_topic = target_top
+        else:
+            # If no stock question contains target_top, dynamically construct a topic question
+            selected_topic = target_top
+            selected_q = f"Could you explain key principles of {target_top} and how you apply them as a {job_role}?"
+
+    if not selected_q:
+        if available:
+            selected_q = available[0]
+            for word in ["python", "sql", "rest", "mvc", "data", "learning", "trees", "join", "gradient"]:
+                if word in selected_q.lower():
+                    selected_topic = word.capitalize()
+                    break
+        else:
+            selected_q = f"Can you elaborate further on how you would apply {job_role} best practices in a real-world scenario?"
+
+    cat = category or interview_type or "Technical Interview"
+
+    return {
+        "question": selected_q,
+        "difficulty": difficulty,
+        "topic": selected_topic,
+        "category": cat,
+        "reason": f"Mock adaptive question covering {selected_topic} at {difficulty} level for {cat}."
+    }
+
+

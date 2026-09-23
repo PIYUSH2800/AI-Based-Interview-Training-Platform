@@ -23,6 +23,7 @@ const ActiveInterviewPage = () => {
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [currentQuestionId, setCurrentQuestionId] = useState(null);
   const [questionText, setQuestionText] = useState('Loading your first question...');
+  const [currentTopic, setCurrentTopic] = useState('');
   const [answer, setAnswer] = useState('');
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [timeLeft, setTimeLeft] = useState(120); // 2 mins per question
@@ -95,16 +96,22 @@ const ActiveInterviewPage = () => {
         interview_type: intData.interview_type,
         difficulty: intData.difficulty,
         skills: '',
+        interview_id: Number(id),
       });
       const text = res.data.question;
+      const qDifficulty = res.data.difficulty || intData.difficulty;
+      const qTopic = res.data.topic || '';
+
       setQuestionText(text);
+      setCurrentTopic(qTopic);
       setTimeLeft(120);
 
       // Save question to database
       const qRes = await api.post(`/interviews/${id}/questions`, {
         question_text: text,
         question_type: intData.interview_type,
-        difficulty: intData.difficulty,
+        difficulty: qDifficulty,
+        topic: qTopic,
         sequence_number: seqIdx + 1,
       });
       setCurrentQuestionId(qRes.data.id);
@@ -200,7 +207,19 @@ const ActiveInterviewPage = () => {
       {/* ── Header: role name + question progress + timer ── */}
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">{interview.job_role} Interview</h2>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-xl font-bold text-slate-900">{interview.job_role} Interview</h2>
+            {currentTopic && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                Topic: {currentTopic}
+              </span>
+            )}
+            {currentQuestionIdx > 0 && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                Tailored Question
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-500">
             Question {currentQuestionIdx + 1} of {interview.total_questions}
           </p>

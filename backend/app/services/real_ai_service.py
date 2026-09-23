@@ -6,7 +6,13 @@ try:
 except ImportError:
     genai = None
 
-from app.services.prompts import QUESTION_GENERATION_PROMPT, ANSWER_EVALUATION_PROMPT, CODING_FEEDBACK_PROMPT, COMMUNICATION_FEEDBACK_PROMPT
+from app.services.prompts import (
+    QUESTION_GENERATION_PROMPT,
+    ANSWER_EVALUATION_PROMPT,
+    CODING_FEEDBACK_PROMPT,
+    COMMUNICATION_FEEDBACK_PROMPT,
+    ADAPTIVE_QUESTION_PROMPT,
+)
 
 class RealAIService:
     def __init__(self):
@@ -236,3 +242,85 @@ class RealAIService:
             "conciseness": parsed["conciseness"].strip(),
             "suggestion": parsed["suggestion"].strip(),
         }
+
+    def generate_adaptive_question(
+        self,
+        job_role: str,
+        interview_type: str,
+        difficulty: str,
+        skills: str = "",
+        candidate_context: dict = None,
+        previous_questions: list = None,
+        last_answer_context: dict = None,
+        topics_covered: list = None,
+        under_covered_topics: list = None,
+        weak_areas: list = None,
+        interview_strategy_guidance: str = "",
+    ) -> dict:
+        """Generates an adaptive, strategically covered question using Gemini."""
+        if not self.is_configured():
+            raise RuntimeError("Gemini API key is not configured.")
+
+        ctx = candidate_context or {}
+        education = ctx.get("education", "Not specified")
+        experience_level = ctx.get("experience_level", "Entry Level")
+        resume_context = ctx.get("resume_text", "No resume provided")
+
+        prev_qs_str = "\n".join([f"- {q}" for q in (previous_questions or [])]) if previous_questions else "None (First question)"
+        topics_cov_str = ", ".join(topics_covered) if topics_covered else "None so far"
+        under_cov_str = ", ".join(under_covered_topics) if under_covered_topics else "All target role topics"
+        weak_areas_str = ", ".join(weak_areas) if weak_areas else "None identified so far"
+        strategy_str = interview_strategy_guidance or f"Conduct a standard {interview_type} for a {job_role} candidate."
+
+        if last_answer_context:
+            last_ans_str = (
+                f"Question: {last_answer_context.get('question_text', 'N/A')}\n"
+                f"Candidate Answer: {last_answer_context.get('answer_text', 'N/A')}\n"
+                f"Overall Score: {last_answer_context.get('score', 'N/A')}/100 "
+                f"(Technical: {last_answer_context.get('technical_score', 'N/A')}, "
+                f"Comm: {last_answer_context.get('communication_score', 'N/A')}, "
+                f"Relevance: {last_answer_context.get('relevance_score', 'N/A')}, "
+                f"Completeness: {last_answer_context.get('completeness_score', 'N/A')})\n"
+                f"Evaluator Feedback: {last_answer_context.get('feedback', 'N/A')}"
+            )
+        else:
+            last_ans_str = "None (Initial question in session)"
+
+        prompt = ADAPTIVE_QUESTION_PROMPT.format(
+            job_role=job_role,
+            interview_type=interview_type,
+            difficulty=difficulty,
+            skills=skills or ctx.get("skills", ""),
+            education=education,
+            experience_level=experience_level,
+            resume_context=resume_context[:500],
+            interview_strategy_guidance=strategy_str,
+            topics_covered_text=topics_cov_str,
+            under_covered_topics_text=under_cov_str,
+            weak_areas_text=weak_areas_str,
+            previous_questions_text=prev_qs_str,
+            last_answer_context=last_ans_str,
+        )
+
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+        )
+
+        if not response or not response.text:
+            raise ValueError("Empty response received from Gemini model for adaptive question.")
+
+        parsed = self._clean_and_parse_json(response.text)
+
+        if "question" in parsed and isinstance(parsed["question"], str) and parsed["question"].strip():
+            return {
+                "question": parsed["question"].strip(),
+                "difficulty": str(parsed.get("difficulty", difficulty)).strip(),
+                "topic": str(parsed.get("topic", job_role)).strip(),
+                "category": str(parsed.get("category", interview_type)).strip(),
+                "reason": str(parsed.get("reason", "Adapted based on candidate performance and topic strategy.")).strip(),
+            }
+
+        raise ValueError("Invalid JSON schema returned by model for adaptive question generation.")
+
+

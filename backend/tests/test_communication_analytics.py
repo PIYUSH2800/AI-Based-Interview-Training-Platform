@@ -13,49 +13,14 @@ backend_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from app.main import app
-from app.database.database import Base, get_db
 from app.models.models import User, Interview, Question, Answer
 from app.auth.auth import create_access_token, get_password_hash
 from app.services.communication_analytics import analyze_answer, compute_aggregate
-
-# ── In-memory test database ───────────────────────────────────────────────────
-
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_analytics.db"
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def override_get_db():
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
+from tests.conftest import TestingSessionLocal
 
 client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
-    if os.path.exists("./test_analytics.db"):
-        try:
-            os.remove("./test_analytics.db")
-        except Exception:
-            pass
 
 
 def _create_user(email="ana@example.com", name="Ana"):
