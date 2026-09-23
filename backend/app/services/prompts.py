@@ -108,3 +108,30 @@ Return ONLY a valid JSON object matching this exact structure:
 
 Generate the JSON response now:
 """
+
+COMMUNICATION_FEEDBACK_PROMPT = """
+You are an experienced interview coach reviewing a candidate's answer to an interview question.
+Your goal is to provide a brief, objective, and constructive communication assessment.
+
+Question asked:
+{question_text}
+
+Candidate's answer:
+{answer_text}
+
+Task:
+Describe ONLY the observable characteristics of this specific answer.
+Do NOT infer emotion, personality, confidence, intelligence, or mental state.
+Do NOT make global claims about the candidate as a communicator.
+Keep each field to 1–2 clear sentences.
+
+Return ONLY a valid JSON object with this exact structure:
+{{
+  "directness": "One sentence describing how directly the answer addresses the question.",
+  "structure": "One sentence describing whether the answer has a clear intro, body, and conclusion.",
+  "conciseness": "One sentence on whether the answer is appropriately brief or verbose.",
+  "suggestion": "One concrete, specific improvement the candidate can make for this type of answer."
+}}
+
+Generate the JSON response now:
+"""

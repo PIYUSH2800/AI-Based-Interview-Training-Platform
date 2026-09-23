@@ -1,7 +1,7 @@
 import os
 import logging
 from app.services.real_ai_service import RealAIService
-from app.services.mock_ai_service import generate_question_mock, evaluate_answer_mock, generate_coding_feedback_mock
+from app.services.mock_ai_service import generate_question_mock, evaluate_answer_mock, generate_coding_feedback_mock, generate_communication_feedback_mock
 
 logger = logging.getLogger("ai_service")
 
@@ -198,6 +198,32 @@ class AIService:
         )
         feedback["provider"] = "mock"
         return feedback
+
+
+    def generate_communication_feedback(
+        self,
+        question_text: str,
+        answer_text: str,
+    ) -> dict:
+        """Generate qualitative communication feedback for one question/answer pair.
+        Always falls back to mock so deterministic analytics are unaffected.
+        """
+        if self.real_ai.is_configured() and self.is_ai_enabled():
+            try:
+                result = self.real_ai.generate_communication_feedback(
+                    question_text=question_text,
+                    answer_text=answer_text,
+                )
+                logger.info("Generated communication feedback via Gemini API.")
+                return result
+            except Exception as e:
+                logger.warning(
+                    f"[AI Fallback] Gemini communication feedback failed ({e}). Using mock."
+                )
+                if not self.is_fallback_enabled():
+                    raise e
+
+        return generate_communication_feedback_mock(question_text, answer_text)
 
 
 # Singleton instance

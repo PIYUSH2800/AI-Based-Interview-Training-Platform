@@ -264,3 +264,38 @@ class CodingSubmissionDetail(CodingSubmissionResponse):
 
 
 
+# --- Communication Analytics Schemas ---
+
+class AiCommunicationFeedback(BaseModel):
+    directness: str = ""
+    structure: str = ""
+    conciseness: str = ""
+    suggestion: str = ""
+
+
+class AnswerAnalytics(BaseModel):
+    question_id: int
+    sequence_number: int
+    question_text: str
+    answer_text: str
+    word_count: int
+    sentence_count: int
+    avg_sentence_length: float
+    max_sentence_length: int
+    estimated_speaking_time_seconds: int
+    estimated_wpm: int
+    filler_word_count: int
+    filler_word_rate: float
+    detected_fillers: dict
+    ai_feedback: Optional[AiCommunicationFeedback] = None
+
+
+class CommunicationAnalyticsResponse(BaseModel):
+    interview_id: int
+    total_words: int
+    total_sentences: int
+    total_filler_words: int
+    avg_filler_rate: float
+    avg_wpm: int
+    overall_suggestion: str
+    per_question: List[AnswerAnalytics] = []

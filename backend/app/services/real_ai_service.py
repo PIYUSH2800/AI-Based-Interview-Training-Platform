@@ -6,7 +6,7 @@ try:
 except ImportError:
     genai = None
 
-from app.services.prompts import QUESTION_GENERATION_PROMPT, ANSWER_EVALUATION_PROMPT, CODING_FEEDBACK_PROMPT
+from app.services.prompts import QUESTION_GENERATION_PROMPT, ANSWER_EVALUATION_PROMPT, CODING_FEEDBACK_PROMPT, COMMUNICATION_FEEDBACK_PROMPT
 
 class RealAIService:
     def __init__(self):
@@ -200,3 +200,39 @@ class RealAIService:
             parsed[str_field] = str(val).strip()
 
         return parsed
+
+    def generate_communication_feedback(
+        self,
+        question_text: str,
+        answer_text: str,
+    ) -> dict:
+        """Generate qualitative communication feedback for a single answer."""
+        if not self.is_configured():
+            raise RuntimeError("Gemini API key is not configured.")
+
+        prompt = COMMUNICATION_FEEDBACK_PROMPT.format(
+            question_text=question_text,
+            answer_text=answer_text,
+        )
+
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+        )
+
+        if not response or not response.text:
+            raise ValueError("Empty response received from Gemini model.")
+
+        parsed = self._clean_and_parse_json(response.text)
+
+        # Ensure all expected keys are present with safe string defaults
+        for key in ["directness", "structure", "conciseness", "suggestion"]:
+            if key not in parsed or not isinstance(parsed[key], str):
+                parsed[key] = ""
+
+        return {
+            "directness": parsed["directness"].strip(),
+            "structure": parsed["structure"].strip(),
+            "conciseness": parsed["conciseness"].strip(),
+            "suggestion": parsed["suggestion"].strip(),
+        }

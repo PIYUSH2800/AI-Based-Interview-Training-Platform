@@ -108,3 +108,39 @@ def generate_coding_feedback_mock(problem_title: str, language: str, source_code
         "better_approach": "A mock better approach would be to use a hash map or built-in optimization.",
         "interview_tips": ["Always explain your complexity to the interviewer"]
     }
+
+
+def generate_communication_feedback_mock(question_text: str, answer_text: str) -> dict:
+    """Generates mock qualitative communication feedback based on answer length."""
+    words = answer_text.strip().split() if answer_text else []
+    length = len(words)
+
+    if length == 0:
+        return {
+            "directness": "No answer was provided, so directness cannot be assessed.",
+            "structure": "No content to evaluate for structure.",
+            "conciseness": "No content was submitted.",
+            "suggestion": "Provide a complete answer that directly addresses the question asked.",
+        }
+    elif length < 15:
+        return {
+            "directness": "The answer addresses the question but lacks supporting detail.",
+            "structure": "The response is too brief to identify a clear structure.",
+            "conciseness": "The answer is very concise — consider expanding with an example.",
+            "suggestion": "Add one concrete example or explanation to support your main point.",
+        }
+    elif length < 60:
+        return {
+            "directness": "The answer directly addresses the core of the question.",
+            "structure": "The response has a recognisable main point with some supporting context.",
+            "conciseness": "The answer length is appropriate for this type of question.",
+            "suggestion": "Consider ending with a brief summary sentence to reinforce your main point.",
+        }
+    else:
+        return {
+            "directness": "The answer is comprehensive and addresses the question with detail.",
+            "structure": "The response demonstrates a clear progression of ideas.",
+            "conciseness": "The answer is detailed — ensure every sentence adds value.",
+            "suggestion": "Review whether any sentences can be condensed without losing meaning.",
+        }
+

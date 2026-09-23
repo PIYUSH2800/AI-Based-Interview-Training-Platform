@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database.database import engine, Base
-from app.api import auth_routes, profile_routes, interview_routes, ai_routes, resume_routes, coding_routes
+from app.api import auth_routes, profile_routes, interview_routes, ai_routes, resume_routes, coding_routes, analytics_routes
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -27,6 +27,7 @@ app.include_router(interview_routes.router)
 app.include_router(ai_routes.router)
 app.include_router(resume_routes.router)
 app.include_router(coding_routes.router)
+app.include_router(analytics_routes.router)
 
 
 @app.get("/")
