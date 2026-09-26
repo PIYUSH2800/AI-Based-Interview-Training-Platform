@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional, List
 from datetime import datetime
 
@@ -13,11 +13,10 @@ class UserCreate(UserBase):
     password: str
 
 class User(UserBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 # --- Profile Schemas ---
 class ProfileBase(BaseModel):
@@ -32,15 +31,16 @@ class ProfileCreate(ProfileBase):
     pass
 
 class Profile(ProfileBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     user_id: int
     resume_path: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
 
 # --- Unified User Profile Schemas ---
 class UserProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     email: EmailStr
@@ -53,9 +53,6 @@ class UserProfileResponse(BaseModel):
     certifications: Optional[str] = None
     target_role: Optional[str] = None
     resume_path: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 class UserProfileUpdate(BaseModel):
     name: Optional[str] = None
@@ -92,12 +89,11 @@ class AnswerCreate(AnswerBase):
     pass
 
 class Answer(AnswerBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     question_id: int
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 # --- Question Schemas ---
 class QuestionBase(BaseModel):
@@ -111,12 +107,11 @@ class QuestionCreate(QuestionBase):
     pass
 
 class Question(QuestionBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     interview_id: int
     answer: Optional[Answer] = None
-    
-    class Config:
-        from_attributes = True
 
 # --- Interview Schemas ---
 class InterviewBase(BaseModel):
@@ -130,34 +125,33 @@ class InterviewCreate(InterviewBase):
     pass
 
 class Interview(InterviewBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     user_id: int
     overall_score: Optional[float] = None
     duration: Optional[int] = None
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 class InterviewDetail(Interview):
+    model_config = ConfigDict(from_attributes=True)
+
     questions: List[Question] = []
-    
-    class Config:
-        from_attributes = True
 
 
 # --- Coding Problem Schemas ---
 class CodingProblemSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     title: str
     slug: str
     difficulty: str
     category: str
 
-    class Config:
-        from_attributes = True
-
 class CodingProblemDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     title: str
     slug: str
@@ -170,20 +164,16 @@ class CodingProblemDetail(BaseModel):
     supported_languages: str  # JSON formatted string or list
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 # --- Code Execution Schemas ---
 class TestCaseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     problem_id: int
     input: str
     expected_output: str
     is_sample: bool
-
-    class Config:
-        from_attributes = True
 
 
 class CodeRunRequest(BaseModel):
@@ -224,12 +214,11 @@ class CodingSubmissionBase(BaseModel):
     error_message: Optional[str] = None
 
 class CodingSubmissionResponse(CodingSubmissionBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     created_at: datetime
     problem_title: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 class CodingFeedbackBase(BaseModel):
     summary: str
@@ -247,21 +236,18 @@ class CodingFeedbackCreate(CodingFeedbackBase):
     provider: str
 
 class CodingFeedbackResponse(CodingFeedbackBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     submission_id: int
     provider: str
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 class CodingSubmissionDetail(CodingSubmissionResponse):
+    model_config = ConfigDict(from_attributes=True)
+
     source_code: str
     feedback: Optional[CodingFeedbackResponse] = None
-    
-    class Config:
-        from_attributes = True
-
 
 
 # --- Communication Analytics Schemas ---
@@ -329,4 +315,3 @@ class InterviewIntelligenceResponse(BaseModel):
     improvement_areas: List[str] = []
     practice_recommendations: List[str] = []
     ai_summary: str = ""
-

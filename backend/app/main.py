@@ -1,7 +1,14 @@
+import os
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 from app.database.database import engine, Base
 from app.api import auth_routes, profile_routes, interview_routes, ai_routes, resume_routes, coding_routes, analytics_routes
+
+load_dotenv()
+
+logger = logging.getLogger("main")
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -12,13 +19,36 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS Configuration for the frontend
+# ---------------------------------------------------------------------------
+# CORS Configuration
+# In development, defaults to allowing localhost frontend origins.
+# In production, set ALLOWED_ORIGINS in the environment as a
+# comma-separated list of exact origins, e.g.:
+#   ALLOWED_ORIGINS=https://yourapp.com,https://www.yourapp.com
+# ---------------------------------------------------------------------------
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+if _raw_origins.strip():
+    allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    logger.info(f"CORS: restricting to configured origins: {allowed_origins}")
+else:
+    # Development defaults — localhost on common frontend ports
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+    ]
+    logger.info("CORS: no ALLOWED_ORIGINS set — using development localhost origins.")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, this should be specific origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 app.include_router(auth_routes.router)
