@@ -12,6 +12,7 @@ from app.services.prompts import (
     CODING_FEEDBACK_PROMPT,
     COMMUNICATION_FEEDBACK_PROMPT,
     ADAPTIVE_QUESTION_PROMPT,
+    INTERVIEW_INTELLIGENCE_SUMMARY_PROMPT,
 )
 
 class RealAIService:
@@ -322,5 +323,50 @@ class RealAIService:
             }
 
         raise ValueError("Invalid JSON schema returned by model for adaptive question generation.")
+
+    def generate_interview_intelligence_summary(
+        self,
+        job_role: str,
+        interview_type: str,
+        difficulty: str,
+        overall_score: float,
+        category_scores: dict,
+        topic_performance: list,
+        strengths: list,
+        improvement_areas: list,
+        communication_metrics: dict = None,
+    ) -> str:
+        """Synthesizes a qualitative interview summary using Gemini based on deterministic metrics."""
+        if not self.is_configured():
+            raise RuntimeError("Gemini API key is not configured.")
+
+        cat_str = ", ".join([f"{k.capitalize()}: {v}" for k, v in (category_scores or {}).items()])
+        top_str = "; ".join([f"{t.get('topic', 'General')} ({t.get('coverage_status', 'N/A')}, avg: {t.get('average_score', 0)})" for t in (topic_performance or [])])
+        str_str = "; ".join(strengths or ["General competence"])
+        imp_str = "; ".join(improvement_areas or ["None noted"])
+        comm_str = f"Words: {communication_metrics.get('total_words', 0)}, Fillers: {communication_metrics.get('total_filler_words', 0)}" if communication_metrics else "N/A"
+
+        prompt = INTERVIEW_INTELLIGENCE_SUMMARY_PROMPT.format(
+            job_role=job_role,
+            interview_type=interview_type,
+            difficulty=difficulty,
+            overall_score=round(overall_score, 1),
+            category_scores_text=cat_str,
+            topic_performance_text=top_str,
+            strengths_text=str_str,
+            improvement_areas_text=imp_str,
+            communication_metrics_text=comm_str,
+        )
+
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+        )
+
+        if not response or not response.text:
+            raise ValueError("Empty response received from Gemini for intelligence summary.")
+
+        return response.text.strip()
+
 
 

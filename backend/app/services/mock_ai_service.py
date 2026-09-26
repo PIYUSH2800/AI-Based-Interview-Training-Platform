@@ -215,3 +215,27 @@ def generate_adaptive_question_mock(
     }
 
 
+def generate_interview_intelligence_summary_mock(
+    job_role: str,
+    interview_type: str,
+    difficulty: str,
+    overall_score: float,
+    category_scores: dict,
+    topic_performance: list,
+    strengths: list,
+    improvement_areas: list,
+) -> str:
+    """Generates a fallback qualitative summary based strictly on deterministic evaluation metrics."""
+    score_str = f"{round(overall_score, 1)}/100"
+    str_summary = ", ".join(strengths[:2]) if strengths else "consistent responses"
+    imp_summary = ", ".join(improvement_areas[:2]) if improvement_areas else "further technical elaboration"
+
+    return (
+        f"In this {difficulty} level {interview_type} for the {job_role} position, "
+        f"you achieved an overall performance score of {score_str}. "
+        f"Key strengths demonstrated during the interview include {str_summary}. "
+        f"To improve performance in future sessions, focus on addressing {imp_summary}."
+    )
+
+
+

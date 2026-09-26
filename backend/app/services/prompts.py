@@ -184,3 +184,32 @@ Generate the JSON response now:
 """
 
 
+INTERVIEW_INTELLIGENCE_SUMMARY_PROMPT = """
+You are an expert executive interview coach synthesizing a completed candidate interview.
+
+Interview Context:
+- Target Job Role: {job_role}
+- Interview Type: {interview_type}
+- Difficulty Level: {difficulty}
+
+Deterministic Performance Metrics (Source of Truth - DO NOT ALTER):
+- Overall Score: {overall_score}/100
+- Category Scores: {category_scores_text}
+- Topic Performance Summary: {topic_performance_text}
+- Data-Backed Strengths: {strengths_text}
+- Data-Backed Areas for Improvement: {improvement_areas_text}
+- Communication Analytics: {communication_metrics_text}
+
+Task:
+Synthesize a concise, 3-4 sentence professional qualitative interview summary.
+- Highlight major observed strengths and key focus areas.
+- Summarize communication effectiveness based on the provided metrics.
+- Keep the feedback encouraging, objective, and actionable.
+- DO NOT recalculate or contradict any numeric scores or database metrics.
+- DO NOT invent facts, candidate traits, or background info not provided.
+
+Return ONLY a clear 3-4 sentence text paragraph (no JSON wrapping, no markdown codeblocks).
+"""
+
+
+

@@ -21,6 +21,10 @@ import {
   ChevronUp,
   Lightbulb,
   BarChart2,
+  BookOpen,
+  TrendingUp,
+  Sparkles,
+  Tag,
 } from 'lucide-react';
 
 // ── Small reusable stat card ──────────────────────────────────────────────────
@@ -31,6 +35,19 @@ const StatCard = ({ label, value, sub }) => (
     {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
   </div>
 );
+
+// ── Score pill ────────────────────────────────────────────────────────────────
+const ScorePill = ({ score }) => {
+  const color =
+    score >= 80 ? 'bg-emerald-100 text-emerald-700' :
+    score >= 65 ? 'bg-blue-100 text-blue-700' :
+                  'bg-amber-100 text-amber-700';
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>
+      {score}
+    </span>
+  );
+};
 
 // ── Collapsible per-answer row ────────────────────────────────────────────────
 const AnswerAccordion = ({ item, index }) => {
@@ -147,15 +164,55 @@ const AnswerAccordion = ({ item, index }) => {
   );
 };
 
+// ── Topic performance bar ─────────────────────────────────────────────────────
+const TopicBar = ({ topic, average_score, question_count, coverage_status }) => {
+  const barColor =
+    coverage_status === 'Strong' ? 'bg-emerald-500' :
+    coverage_status === 'Good'   ? 'bg-blue-500' :
+                                   'bg-amber-500';
+  const labelColor =
+    coverage_status === 'Strong' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
+    coverage_status === 'Good'   ? 'text-blue-700 bg-blue-50 border-blue-200' :
+                                   'text-amber-700 bg-amber-50 border-amber-200';
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2 min-w-0">
+          <Tag size={13} className="text-slate-400 flex-shrink-0" />
+          <span className="text-sm font-semibold text-slate-700 truncate">{topic}</span>
+          <span className="text-xs text-slate-400">({question_count}Q)</span>
+        </div>
+        <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
+          <ScorePill score={average_score} />
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${labelColor}`}>
+            {coverage_status}
+          </span>
+        </div>
+      </div>
+      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${barColor}`}
+          style={{ width: `${Math.min(average_score, 100)}%` }}
+          aria-label={`${topic}: ${average_score}%`}
+        />
+      </div>
+    </div>
+  );
+};
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 const InterviewResultPage = () => {
   const { id } = useParams();
 
-  // Existing interview feedback state
+  // Existing interview feedback state (kept for chart data compatibility)
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // New communication analytics state
+  // New intelligence state
+  const [intelligence, setIntelligence] = useState(null);
+  const [intelligenceLoading, setIntelligenceLoading] = useState(true);
+
+  // Communication analytics state
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
 
@@ -174,7 +231,22 @@ const InterviewResultPage = () => {
     fetchFeedback();
   }, [id]);
 
-  // Fetch communication analytics (new — runs independently)
+  // Fetch intelligence report
+  useEffect(() => {
+    const fetchIntelligence = async () => {
+      try {
+        const res = await api.get(`/interviews/${id}/intelligence`);
+        setIntelligence(res.data);
+      } catch (err) {
+        console.error('Failed to fetch interview intelligence', err);
+      } finally {
+        setIntelligenceLoading(false);
+      }
+    };
+    fetchIntelligence();
+  }, [id]);
+
+  // Fetch communication analytics
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
@@ -202,19 +274,31 @@ const InterviewResultPage = () => {
     );
   }
 
-  const chartData = feedback.category_breakdown || [
-    { name: 'Technical', score: 75 },
-    { name: 'Comm.', score: 75 },
-    { name: 'Relevance', score: 75 },
-    { name: 'Completeness', score: 75 },
-  ];
+  // Use intelligence data when available, fall back to original feedback
+  const overallScoreDisplay = intelligence
+    ? Math.round(intelligence.overall_score)
+    : (feedback.overall_score !== undefined ? Math.round(feedback.overall_score) : 75);
 
-  const overallScoreDisplay =
-    feedback.overall_score !== undefined ? Math.round(feedback.overall_score) : 75;
+  const chartData = intelligence
+    ? [
+        { name: 'Technical',    score: intelligence.category_scores.technical },
+        { name: 'Comm.',        score: intelligence.category_scores.communication },
+        { name: 'Relevance',    score: intelligence.category_scores.relevance },
+        { name: 'Completeness', score: intelligence.category_scores.completeness },
+      ]
+    : (feedback.category_breakdown || [
+        { name: 'Technical', score: 75 },
+        { name: 'Comm.',     score: 75 },
+        { name: 'Relevance', score: 75 },
+        { name: 'Completeness', score: 75 },
+      ]);
+
+  const displayStrengths   = intelligence?.strengths        || feedback.strengths        || [];
+  const displayWeaknesses  = intelligence?.improvement_areas || feedback.weaknesses       || [];
+  const displayRecs        = intelligence?.practice_recommendations || feedback.recommendations || [];
 
   const hasAnalytics = analytics && analytics.per_question && analytics.per_question.length > 0;
 
-  // Format speaking time to "Xm Ys" if >= 60 seconds
   const formatTime = (secs) => {
     if (!secs) return '0s';
     if (secs < 60) return `${secs}s`;
@@ -237,14 +321,22 @@ const InterviewResultPage = () => {
             {overallScoreDisplay}
             <span className="text-3xl opacity-70">%</span>
           </p>
+          {intelligence && (
+            <p className="text-xs opacity-70 mt-1">
+              {intelligence.interview_type} · {intelligence.difficulty}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* ── Existing: Category breakdown + Strengths/Weaknesses ── */}
+      {/* ── Performance Overview: Category breakdown chart ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Chart */}
         <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-          <h3 className="text-xl font-bold text-slate-900 mb-6">Category Breakdown</h3>
+          <div className="flex items-center space-x-2 mb-6">
+            <TrendingUp size={18} className="text-blue-600" />
+            <h3 className="text-xl font-bold text-slate-900">Performance Overview</h3>
+          </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -281,7 +373,7 @@ const InterviewResultPage = () => {
           </div>
         </div>
 
-        {/* Strengths / Weaknesses */}
+        {/* Strengths / Improvement Areas */}
         <div className="space-y-6">
           <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100">
             <h3 className="text-lg font-bold text-emerald-800 mb-4 flex items-center space-x-2">
@@ -289,10 +381,10 @@ const InterviewResultPage = () => {
               <span>Strengths</span>
             </h3>
             <ul className="space-y-3">
-              {feedback.strengths?.map((item, idx) => (
+              {displayStrengths.map((item, idx) => (
                 <li key={idx} className="flex items-start space-x-2 text-emerald-700">
                   <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                  <span>{item}</span>
+                  <span className="text-sm">{item}</span>
                 </li>
               ))}
             </ul>
@@ -304,10 +396,10 @@ const InterviewResultPage = () => {
               <span>Areas for Improvement</span>
             </h3>
             <ul className="space-y-3">
-              {feedback.weaknesses?.map((item, idx) => (
+              {displayWeaknesses.map((item, idx) => (
                 <li key={idx} className="flex items-start space-x-2 text-amber-700">
                   <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
-                  <span>{item}</span>
+                  <span className="text-sm">{item}</span>
                 </li>
               ))}
             </ul>
@@ -315,19 +407,57 @@ const InterviewResultPage = () => {
         </div>
       </div>
 
-      {/* ── Existing: Action Plan ── */}
+      {/* ── Topic Performance ── (only when intelligence data available) */}
+      {!intelligenceLoading && intelligence && intelligence.topic_performance.length > 0 && (
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+          <div className="flex items-center space-x-2 mb-6">
+            <BarChart2 size={18} className="text-indigo-600" />
+            <h3 className="text-xl font-bold text-slate-900">Performance by Topic</h3>
+          </div>
+          <div className="space-y-4">
+            {intelligence.topic_performance.map((tp) => (
+              <TopicBar
+                key={tp.topic}
+                topic={tp.topic}
+                average_score={tp.average_score}
+                question_count={tp.question_count}
+                coverage_status={tp.coverage_status}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-slate-400 mt-4">
+            Coverage status thresholds: Strong ≥80 · Good ≥65 · Needs Practice &lt;65
+          </p>
+        </div>
+      )}
+
+      {/* ── AI Interview Summary ── */}
+      {!intelligenceLoading && intelligence && intelligence.ai_summary && (
+        <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-8 rounded-3xl border border-indigo-100">
+          <div className="flex items-center space-x-2 mb-4">
+            <Sparkles size={18} className="text-indigo-600" />
+            <h3 className="text-xl font-bold text-indigo-900">AI Interview Summary</h3>
+          </div>
+          <p className="text-slate-700 leading-relaxed">{intelligence.ai_summary}</p>
+        </div>
+      )}
+
+      {/* ── Recommended Practice ── */}
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-        <h3 className="text-xl font-bold text-slate-900 mb-6">Recommended Action Plan</h3>
+        <div className="flex items-center space-x-2 mb-6">
+          <BookOpen size={18} className="text-violet-600" />
+          <h3 className="text-xl font-bold text-slate-900">Recommended Practice</h3>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {feedback.recommendations?.map((item, idx) => (
+          {displayRecs.map((item, idx) => (
             <div
               key={idx}
               className="flex items-center space-x-3 p-4 bg-slate-50 rounded-xl border border-slate-100"
             >
-              <div className="bg-blue-100 text-blue-600 font-bold w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
+              <div className="bg-violet-100 text-violet-600 font-bold w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm">
                 {idx + 1}
               </div>
-              <span className="text-slate-700 font-medium">{item}</span>
+              <span className="text-slate-700 font-medium text-sm">{item}</span>
             </div>
           ))}
         </div>
@@ -343,9 +473,7 @@ const InterviewResultPage = () => {
         </div>
       </div>
 
-      {/* ════════════════════════════════════════════════════════════════════
-          NEW: Communication Analytics section
-          ═══════════════════════════════════════════════════════════════════ */}
+      {/* ── Communication Analytics ── */}
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
         <div className="flex items-center space-x-3 mb-6">
           <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">

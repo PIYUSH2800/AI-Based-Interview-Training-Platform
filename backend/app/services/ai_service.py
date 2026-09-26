@@ -7,6 +7,7 @@ from app.services.mock_ai_service import (
     generate_coding_feedback_mock,
     generate_communication_feedback_mock,
     generate_adaptive_question_mock,
+    generate_interview_intelligence_summary_mock,
 )
 
 logger = logging.getLogger("ai_service")
@@ -285,6 +286,52 @@ class AIService:
             topics_covered=topics_covered,
             under_covered_topics=under_covered_topics,
             category=category,
+        )
+
+    def generate_interview_intelligence_summary(
+        self,
+        job_role: str,
+        interview_type: str,
+        difficulty: str,
+        overall_score: float,
+        category_scores: dict,
+        topic_performance: list,
+        strengths: list,
+        improvement_areas: list,
+        communication_metrics: dict = None,
+    ) -> str:
+        """Generate qualitative interview intelligence summary. Falls back to mock on AI failure."""
+        if self.real_ai.is_configured() and self.is_ai_enabled():
+            try:
+                result = self.real_ai.generate_interview_intelligence_summary(
+                    job_role=job_role,
+                    interview_type=interview_type,
+                    difficulty=difficulty,
+                    overall_score=overall_score,
+                    category_scores=category_scores,
+                    topic_performance=topic_performance,
+                    strengths=strengths,
+                    improvement_areas=improvement_areas,
+                    communication_metrics=communication_metrics,
+                )
+                logger.info("Generated interview intelligence summary via Gemini API.")
+                return result
+            except Exception as e:
+                logger.warning(
+                    f"[AI Fallback] Gemini intelligence summary failed ({e}). Using mock."
+                )
+                if not self.is_fallback_enabled():
+                    raise e
+
+        return generate_interview_intelligence_summary_mock(
+            job_role=job_role,
+            interview_type=interview_type,
+            difficulty=difficulty,
+            overall_score=overall_score,
+            category_scores=category_scores,
+            topic_performance=topic_performance,
+            strengths=strengths,
+            improvement_areas=improvement_areas,
         )
 
 

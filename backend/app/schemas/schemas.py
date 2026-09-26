@@ -299,3 +299,34 @@ class CommunicationAnalyticsResponse(BaseModel):
     avg_wpm: int
     overall_suggestion: str
     per_question: List[AnswerAnalytics] = []
+
+
+# --- Checkpoint 7C Interview Intelligence Schemas ---
+
+class TopicPerformance(BaseModel):
+    topic: str
+    question_count: int
+    average_score: float
+    coverage_status: str  # e.g. "Strong", "Good", "Needs Practice"
+
+
+class CategoryScores(BaseModel):
+    technical: float
+    communication: float
+    relevance: float
+    completeness: float
+
+
+class InterviewIntelligenceResponse(BaseModel):
+    interview_id: int
+    job_role: str
+    interview_type: str
+    difficulty: str
+    overall_score: float
+    category_scores: CategoryScores
+    topic_performance: List[TopicPerformance] = []
+    strengths: List[str] = []
+    improvement_areas: List[str] = []
+    practice_recommendations: List[str] = []
+    ai_summary: str = ""
+
