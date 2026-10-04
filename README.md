@@ -320,3 +320,58 @@ cd frontend
 npm run build
 ```
 *Current verified status: **Successful production build***.
+
+---
+
+## Deployment Readiness
+
+### Database
+The platform defaults to **SQLite** (`interview_platform.db`) for rapid development and straightforward single-server deployments.
+* **Schema Creation**: Tables are created automatically on startup.
+* **Migrations**: A database migration framework (e.g., Alembic) is not currently implemented.
+* **Production Note**: For high-concurrency cloud deployments, transitioning to PostgreSQL or MySQL is recommended.
+
+### File Storage
+Uploaded resumes are temporarily stored locally in the `backend/uploads/` directory.
+* **Security**: This directory must not be publicly exposed via a static web server.
+* **Future Scaling**: For distributed deployments, consider migrating upload handling to an external object storage service (e.g., AWS S3).
+
+### Health Checks
+To verify the application is running, a safe public endpoint is available:
+* `GET /` returns a welcome JSON payload.
+
+### Deployment Options
+
+#### 1. Local Demo
+* **Stack**: Python, Node.js, Docker Desktop (Windows/Mac/Linux).
+* **Setup**: Follow the standard setup steps above using `npm run dev` and `uvicorn --reload`.
+
+#### 2. Single-Server Deployment
+* **Stack**: FastAPI (Uvicorn), Frontend Static Build, Docker Engine.
+* **Backend**: Run FastAPI with a production ASGI server configuration:
+  ```bash
+  uvicorn app.main:app --host 0.0.0.0 --port 8000
+  ```
+* **Frontend**: Serve the static `dist/` bundle (generated via `npm run build`) using Nginx or a similar web server, configured to proxy API requests to the backend on port 8000.
+* **Coding Execution**: Ensure the host environment has Docker Engine installed and accessible to the backend process. Note: The application itself does not require containerization; Docker is only invoked to isolate user code execution.
+
+#### 3. Future Cloud Deployment
+* Host the backend on a secure VM or container platform (with access to a Docker daemon for code execution).
+* Host the frontend static files on a CDN (e.g., Vercel, Netlify, AWS CloudFront).
+* Utilize an external managed database (e.g., AWS RDS) and object storage (e.g., AWS S3).
+
+### Backup / Data Considerations
+* **Database**: Regularly backup `backend/interview_platform.db` if utilizing SQLite in production.
+* **Uploads**: Back up the `backend/uploads/` directory to preserve candidate resumes.
+* **Secrets**: Securely rotate your `SECRET_KEY` and `GEMINI_API_KEY`.
+
+### Pre-Deployment Checklist
+Before deploying to any production or staging environment, verify the following:
+- [ ] Generate and configure a secure, random `SECRET_KEY`.
+- [ ] Configure `ALLOWED_ORIGINS` to precisely match your frontend domain(s).
+- [ ] Set `ENVIRONMENT=production`.
+- [ ] Set `GEMINI_API_KEY` (if utilizing live AI).
+- [ ] Ensure Docker Engine is running and accessible.
+- [ ] Run the backend test suite (`python -m pytest`).
+- [ ] Build the frontend (`npm run build`).
+- [ ] Verify functionality (Authentication, AI Interviews, Coding Execution, Resume Uploads).
