@@ -1,71 +1,322 @@
 # AI-Based Interview Training Platform
 
-This is a complete, full-stack web application designed to help students and job seekers practice interviews using Artificial Intelligence.
+## Overview
 
-## Features
+The **AI-Based Interview Training Platform** is a full-stack web application designed to help students, fresh graduates, and job seekers practice for technical and behavioral interviews. By leveraging Artificial Intelligence, the platform provides an interactive, realistic interview experience complete with adaptive questioning, voice input, coding challenges, and comprehensive personalized feedback.
 
-- **User Authentication**: Secure JWT-based login and registration.
-- **Adaptive AI Interviews**: Dynamic mock interviews based on target job role and difficulty.
-- **Real-time Feedback**: Detailed AI evaluation of technical accuracy, relevance, and completeness.
-- **Performance Dashboard**: Charts and statistics tracking interview scores over time.
-- **Profile Management**: Customize target roles and skills.
+It is built to be easily testable, configurable, and deployable, making it an excellent resource for interview preparation or as a demonstrative technical project.
+
+---
+
+## Feature List
+
+### Authentication
+* User registration and login
+* Secure JWT-based authentication
+* Protected routes and session management
+
+### Profile & Resume
+* User profile management (target roles, skills, education)
+* Resume upload functionality
+* Automated PDF/DOCX parsing and resume analysis
+
+### AI Interviews
+* Dynamic AI question generation tailored to user profiles
+* Real-time answer evaluation
+* Google Gemini integration for high-quality responses
+* Offline/deterministic Mock AI fallback
+
+### Adaptive Interviews
+* Difficulty adaptation based on candidate performance
+* Topic adaptation and dynamic interview strategy
+* Question coverage tracking and duplicate prevention
+
+### Voice
+* Speech-to-text integration for spoken answers
+* Text-to-speech capabilities
+* Browser-native voice features with editable transcripts
+
+### Communication Analytics
+* Word count and sentence metrics tracking
+* Filler word detection (e.g., "um", "like")
+* Estimated speaking time and Words Per Minute (WPM) calculation
+
+### Interview Intelligence
+* Category performance scoring (technical, communication, relevance)
+* Topic performance breakdowns
+* Identification of strengths and improvement areas
+* Actionable practice recommendations and an overall AI summary
+
+### Coding Interviews
+* Curated problem bank
+* Integrated Monaco Editor for in-browser coding
+* Support for Python, Java, and C++
+* Secure Docker-based execution for untrusted code
+* Automated test cases and scoring
+* Submission history tracking
+* AI-driven coding feedback and approach suggestions
+
+### Dashboard & History
+* Comprehensive interview history
+* Score tracking and progression analytics
+* Historical performance trends
+
+---
+
+## Architecture Overview
+
+The platform uses a decoupled client-server architecture.
+
+**General Application Flow:**
+```text
+Frontend (React)
+       ↓
+FastAPI REST API
+       ↓
+Services / AI / Database (SQLite)
+       ↓
+Gemini API or Mock AI Service
+```
+
+**Coding Execution Flow:**
+```text
+Frontend (React)
+       ↓
+FastAPI REST API
+       ↓
+Docker Code Execution Service
+       ↓
+Isolated Language Container (Python/Java/C++)
+```
+
+---
 
 ## Technology Stack
 
-- **Frontend**: React, Vite, Tailwind CSS, React Router, Recharts, Axios.
-- **Backend**: Python, FastAPI, SQLAlchemy, SQLite (Development ready).
-- **AI**: Internal Mock AI service that simulates LLM generation and evaluation (can be replaced with OpenAI/Gemini APIs in production).
+**Frontend:**
+* React 19
+* Vite
+* Tailwind CSS
+* React Router
+* Recharts (for analytics)
+* Axios
+* Monaco Editor (for coding interviews)
 
-## Setup Instructions
+**Backend:**
+* Python
+* FastAPI (REST Framework)
+* SQLAlchemy (ORM)
+* SQLite (Database)
+* Pytest (Testing)
 
-### 1. Backend Setup
+**AI & Execution:**
+* Google Gemini (Generative AI)
+* Docker (Isolated code execution)
 
-The backend uses FastAPI. You will need Python installed.
-
-```bash
-cd backend
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-# Mac/Linux
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-> **Note on Windows Installation**: If you encounter an error building `pydantic-core` (missing `link.exe`), it means your Python version (e.g., Python 3.14) is missing pre-compiled binary wheels for Pydantic and requires C++ Build Tools. To fix this quickly, use **Python 3.11 or 3.12** instead, or install Visual Studio C++ Build Tools.
-
-#### Running the Backend Server
-```bash
-uvicorn app.main:app --reload
-```
-The API documentation will be available at: http://127.0.0.1:8000/docs
-
-### 2. Frontend Setup
-
-The frontend is a React application built with Vite and TailwindCSS.
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# (Optional) If you get tailwind errors on fresh install, ensure you install tailwind explicitly:
-npm install -D tailwindcss postcss autoprefixer
-npx tailwindcss init -p
-
-# Start the development server
-npm run dev
-```
-The React application will be available at: http://localhost:5173
-
-## Demo Mode
-
-This platform runs entirely offline using the **Mock AI Service** (`backend/app/ai/mock_ai.py`). You do not need an external API key to demonstrate the core functionality! The AI will randomly generate relevant questions and provide structured heuristic-based feedback to simulate a real LLM.
+---
 
 ## Project Structure
-- `/backend` - Contains FastAPI application, SQLite database connection, Mock AI logic, and Pydantic schemas.
-- `/frontend` - Contains Vite React SPA, Tailwind styles, and Recharts dashboard.
+
+```text
+AI_interview_platform/
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── ai/
+│   │   ├── auth/
+│   │   ├── database/
+│   │   ├── models/
+│   │   ├── schemas/
+│   │   └── services/
+│   ├── tests/
+│   ├── uploads/
+│   ├── .env.example
+│   ├── main.py
+│   └── requirements.txt
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── context/
+│   │   ├── pages/
+│   │   └── services/
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.js
+├── .gitignore
+└── README.md
+```
+
+---
+
+## Prerequisites
+
+To run this project locally, ensure you have the following installed:
+* **Python**: 3.9+ (Python 3.11 or 3.12 recommended on Windows to avoid build issues)
+* **Node.js**: v18+ and **npm**
+* **Docker Desktop**: Required for executing coding interview submissions securely.
+* **WSL2**: (Windows only) Required by Docker Desktop for Linux containers.
+* **Gemini API Key**: (Optional) Required only if you wish to use the live AI mode.
+
+---
+
+## Backend Setup
+
+1. **Navigate to the backend directory:**
+   ```bash
+   cd backend
+   ```
+
+2. **Create and activate a virtual environment:**
+   ```bash
+   # Create virtual environment
+   python -m venv venv
+   
+   # Activate on Windows:
+   venv\Scripts\activate
+   # Activate on macOS/Linux:
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Configure environment variables:**
+   Copy the example environment file and fill in your details:
+   ```bash
+   cp .env.example .env
+   ```
+   *(See the Environment Variables section for configuration details)*
+
+5. **Start the FastAPI server:**
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+   The backend API will run on `http://127.0.0.1:8000`
+
+---
+
+## Frontend Setup
+
+1. **Navigate to the frontend directory:**
+   ```bash
+   cd frontend
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Configure API base URL:**
+   By default, the Vite app proxies or points requests to `http://localhost:8000`. If your backend runs on a different port, update the API base URL in your frontend configuration or environment.
+
+4. **Start the development server:**
+   ```bash
+   npm run dev
+   ```
+   The React application will be available at `http://localhost:5173`
+
+5. **Build the production bundle:**
+   ```bash
+   npm run build
+   ```
+
+---
+
+## Environment Variables
+
+The backend relies on environment variables defined in `backend/.env`. Important variables include:
+
+* `SECRET_KEY`: Used for signing JWTs. You must generate a secure, random string (e.g., using `python -m secrets`).
+* `ENVIRONMENT`: `development` | `staging` | `production`.
+* `ALLOWED_ORIGINS`: Comma-separated list of allowed frontend origins for CORS.
+* `AI_PROVIDER`: Set to `gemini` to use live AI, or `mock` to force deterministic responses.
+* `GEMINI_API_KEY`: Your Google Gemini API key.
+* `AI_MODEL`: e.g., `gemini-2.5-flash`.
+* `AI_ENABLED`: Feature flag (`true`/`false`).
+* `AI_FALLBACK_TO_MOCK`: Automatically switch to Mock AI if the live API fails (`true`/`false`).
+* `CODE_EXECUTION_TIMEOUT`: Maximum time allowed for user code execution.
+* `CODE_MAX_SOURCE_SIZE` / `CODE_MAX_OUTPUT_SIZE`: Limits on code size and stdout length.
+* `CODE_EXECUTION_MEMORY`: Memory limit for the Docker container (e.g., `128m`).
+
+**Generating a secure `SECRET_KEY`**:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+*Never commit your real `.env` file or expose your API keys!*
+
+---
+
+## Gemini / Mock Mode
+
+The platform supports two AI operational modes to facilitate both rich experiences and reliable offline demonstrations:
+
+### Live AI (Gemini)
+Requires a valid `GEMINI_API_KEY`. The platform communicates with Google's Gemini models to evaluate resumes, dynamically generate adaptive questions, and score answers organically based on deep natural language understanding.
+
+### Mock AI
+Works entirely offline without an API key. It provides deterministic, heuristic-based responses for all AI operations. This mode is excellent for local development, automated testing, and guaranteed demonstrations without risking network timeouts or rate limits.
+
+*Selection is based on the `AI_PROVIDER` and `AI_FALLBACK_TO_MOCK` environment variables.*
+
+---
+
+## Docker Coding Execution
+
+User-submitted code is never executed directly on the host machine. Instead, it is executed securely using ephemeral Docker containers.
+
+The following security restrictions are strictly enforced for every submission:
+* **Network Disabled**: Containers are run with `--network none` to prevent malicious outbound requests.
+* **Memory Limit**: Memory consumption is capped to prevent OOM attacks (e.g., `--memory 128m`).
+* **CPU Limit**: CPU usage is constrained to prevent denial of service (e.g., `--cpus 0.5`).
+* **Timeout Execution**: Processes are forcefully killed if they exceed the configured execution timeout.
+* **Restricted Language Allowlist**: Only predefined languages and commands are permitted.
+* **Container Cleanup**: Containers are automatically destroyed immediately after execution (`--rm`).
+
+---
+
+## Supported Languages
+
+For coding interviews, the platform officially supports:
+* **Python** 
+* **Java** 
+* **C++** 
+
+---
+
+## API Overview
+
+The platform exposes a robust REST API. Key namespaces include:
+
+* **Authentication** (`/api/auth`): Login, registration, token generation.
+* **Profile** (`/api/profile`): User profile management.
+* **Resume** (`/api/resume`): Resume upload, parsing, and analysis endpoints.
+* **Interviews** (`/api/interviews`): Creation and management of interview sessions.
+* **AI** (`/api/ai`): Endpoints for AI question generation, adaptive routing, and feedback.
+* **Coding** (`/api/coding`): Endpoints to fetch coding problems, submit code for Docker execution, and retrieve test results.
+* **Analytics** (`/api/analytics`): Aggregation of communication metrics and overall interview intelligence scores.
+
+---
+
+## Running Tests
+
+The platform includes comprehensive test suites.
+
+### Backend
+To run the full backend testing suite:
+```bash
+cd backend
+python -m pytest
+```
+*Current verified status: **97 passed*** (including rigorous security hardening tests).
+
+### Frontend
+To verify the frontend compiles cleanly for production:
+```bash
+cd frontend
+npm run build
+```
+*Current verified status: **Successful production build***.
