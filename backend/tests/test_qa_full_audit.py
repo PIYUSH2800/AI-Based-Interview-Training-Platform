@@ -23,6 +23,9 @@ backend_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
+from unittest.mock import patch
+from app.services.executor import MockCodeExecutor
+
 from app.main import app
 from app.database.database import get_db
 from app.models.models import User, Profile, Interview, Question, Answer, CodingProblem, CodingSubmission
@@ -275,26 +278,27 @@ def test_full_system_qa_audit():
     assert len(problems) >= 3
     prob1 = problems[0]
 
-    # Run code on sample test cases
-    run_resp = client.post("/api/coding/run", headers=headers_a, json={
-        "problem_id": prob1["id"],
-        "language": "python",
-        "code": "def twoSum(nums: list[int], target: int) -> list[int]:\n    seen = {}\n    for i, num in enumerate(nums):\n        diff = target - num\n        if diff in seen:\n            return [seen[diff], i]\n        seen[num] = i\n    return []"
-    })
-    assert run_resp.status_code == 200
-    run_data = run_resp.json()
-    assert run_data["status"] == "completed"
+    with patch("app.api.coding_routes.get_code_executor", return_value=MockCodeExecutor()):
+        # Run code on sample test cases
+        run_resp = client.post("/api/coding/run", headers=headers_a, json={
+            "problem_id": prob1["id"],
+            "language": "python",
+            "code": "def twoSum(nums: list[int], target: int) -> list[int]:\n    seen = {}\n    for i, num in enumerate(nums):\n        diff = target - num\n        if diff in seen:\n            return [seen[diff], i]\n        seen[num] = i\n    return []"
+        })
+        assert run_resp.status_code == 200
+        run_data = run_resp.json()
+        assert run_data["status"] == "completed"
 
-    # Submit code
-    sub_resp = client.post("/api/coding/submit", headers=headers_a, json={
-        "problem_id": prob1["id"],
-        "language": "python",
-        "code": "def twoSum(nums: list[int], target: int) -> list[int]:\n    seen = {}\n    for i, num in enumerate(nums):\n        diff = target - num\n        if diff in seen:\n            return [seen[diff], i]\n        seen[num] = i\n    return []"
-    })
-    assert sub_resp.status_code == 200
-    sub_data = sub_resp.json()
-    submission_id = sub_data["id"]
-    assert sub_data["score"] == 100
+        # Submit code
+        sub_resp = client.post("/api/coding/submit", headers=headers_a, json={
+            "problem_id": prob1["id"],
+            "language": "python",
+            "code": "def twoSum(nums: list[int], target: int) -> list[int]:\n    seen = {}\n    for i, num in enumerate(nums):\n        diff = target - num\n        if diff in seen:\n            return [seen[diff], i]\n        seen[num] = i\n    return []"
+        })
+        assert sub_resp.status_code == 200
+        sub_data = sub_resp.json()
+        submission_id = sub_data["id"]
+        assert sub_data["score"] == 100
 
     # User B cannot view User A's submission
     sub_b = client.get(f"/api/coding/submissions/{submission_id}", headers=headers_b)

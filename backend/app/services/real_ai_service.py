@@ -13,6 +13,8 @@ from app.services.prompts import (
     COMMUNICATION_FEEDBACK_PROMPT,
     ADAPTIVE_QUESTION_PROMPT,
     INTERVIEW_INTELLIGENCE_SUMMARY_PROMPT,
+    CODING_HINT_PROMPT,
+    CODING_EXPLANATION_PROMPT,
 )
 
 class RealAIService:
@@ -20,15 +22,24 @@ class RealAIService:
         self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
         self.model_name = os.getenv("AI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
         self.client = None
-        if self.api_key and genai is not None:
+        self._init_client()
+
+    def _init_client(self):
+        self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        self.model_name = os.getenv("AI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+        if self.api_key and self.api_key != "your_gemini_api_key_here" and genai is not None:
             try:
                 self.client = genai.Client(api_key=self.api_key)
             except Exception as e:
                 print(f"Warning: Failed to initialize Gemini Client: {e}")
-
+                self.client = None
 
     def is_configured(self) -> bool:
-        return bool(self.api_key and self.client is not None)
+        if self.client is None:
+            self._init_client()
+        if not self.api_key or self.api_key == "your_gemini_api_key_here":
+            return False
+        return bool(self.client is not None)
 
     def _clean_and_parse_json(self, response_text: str) -> dict:
         """Helper to extract and parse JSON object from LLM response string."""
@@ -100,6 +111,27 @@ class RealAIService:
         difficulty: str = "Intermediate",
         candidate_context: dict = None
     ) -> dict:
+        # Step 1: Pre-flight check for meaningless / random / gibberish input
+        from app.services.answer_validator import validate_answer_meaningfulness
+        val = validate_answer_meaningfulness(question_text, answer_text)
+        if not val.is_valid:
+            return {
+                "score": 0,
+                "technical_score": 0,
+                "communication_score": 0,
+                "relevance_score": 0,
+                "completeness_score": 0,
+                "feedback": (
+                    "The submitted response is unintelligible, empty, or contains no meaningful "
+                    "technical explanation addressing the question. Please provide a relevant and structured answer."
+                ),
+                "strengths": [],
+                "improvements": [
+                    "Provide a coherent answer addressing the core question",
+                    "Explain the concept using standard technical terminology"
+                ]
+            }
+
         if not self.is_configured():
             raise RuntimeError("Gemini API key is not configured.")
 
@@ -121,23 +153,31 @@ class RealAIService:
 
         parsed = self._clean_and_parse_json(response.text)
         
-        def clamp_score(val, default=75):
+        def clamp_score(val, default=0):
             try:
                 num = int(float(val))
                 return max(0, min(100, num))
             except (ValueError, TypeError):
                 return default
 
-        overall = clamp_score(parsed.get("overall_score", parsed.get("score", 75)))
-        tech = clamp_score(parsed.get("technical_score", overall))
-        comm = clamp_score(parsed.get("communication_score", overall))
-        rel = clamp_score(parsed.get("relevance_score", overall))
-        comp = clamp_score(parsed.get("completeness_score", overall))
+        tech = clamp_score(parsed.get("technical_score", 0))
+        rel = clamp_score(parsed.get("relevance_score", 0))
+        comp = clamp_score(parsed.get("completeness_score", 0))
+        comm = clamp_score(parsed.get("communication_score", 0))
+
+        # Ground overall score
+        raw_overall = clamp_score(parsed.get("overall_score", parsed.get("score", 0)))
+        if tech == 0 and rel == 0:
+            overall = 0
+        else:
+            overall = raw_overall
 
         feedback = str(parsed.get("feedback", "Evaluation completed.")).strip()
-        strengths = parsed.get("strengths", ["Good effort"])
+        strengths = parsed.get("strengths", ["Attempted question"])
         if not isinstance(strengths, list):
             strengths = [str(strengths)]
+        if overall == 0:
+            strengths = []
 
         improvements = parsed.get("improvements", parsed.get("weaknesses", ["Provide more technical depth"]))
         if not isinstance(improvements, list):
@@ -367,6 +407,112 @@ class RealAIService:
             raise ValueError("Empty response received from Gemini for intelligence summary.")
 
         return response.text.strip()
+
+    def generate_coding_hint(
+        self,
+        problem_title: str,
+        problem_description: str,
+        difficulty: str,
+        category: str,
+        level: int,
+    ) -> dict:
+        """Generate a progressive hint for a coding problem (Level 1, 2, or 3)."""
+        if not self.is_configured():
+            raise RuntimeError("Gemini API key is not configured.")
+
+        level_names = {
+            1: "Conceptual Guidance",
+            2: "Approach Guidance",
+            3: "Detailed Guidance",
+        }
+        level_name = level_names.get(level, f"Level {level} Guidance")
+
+        prompt = CODING_HINT_PROMPT.format(
+            title=problem_title,
+            difficulty=difficulty,
+            category=category,
+            description=problem_description,
+            level=level,
+            level_name=level_name,
+        )
+
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+        )
+
+        if not response or not response.text:
+            raise ValueError("Empty response received from Gemini model for hint.")
+
+        parsed = self._clean_and_parse_json(response.text)
+
+        # Validate and sanitize fields
+        title = parsed.get("title", f"Level {level} — {level_name}")
+        hint = parsed.get("hint", "")
+        key_takeaways = parsed.get("key_takeaways", [])
+        if not isinstance(key_takeaways, list):
+            key_takeaways = [str(key_takeaways)]
+        edge_cases = parsed.get("edge_cases", [])
+        if not isinstance(edge_cases, list):
+            edge_cases = [str(edge_cases)]
+
+        return {
+            "level": level,
+            "title": str(title).strip(),
+            "hint": str(hint).strip(),
+            "key_takeaways": [str(t).strip() for t in key_takeaways if t],
+            "edge_cases": [str(e).strip() for e in edge_cases if e],
+            "provider": "gemini",
+        }
+
+    def generate_coding_explanation(
+        self,
+        problem_title: str,
+        problem_description: str,
+        difficulty: str,
+        category: str,
+    ) -> dict:
+        """Generate educational explanation of optimal algorithm and concepts for a coding problem."""
+        if not self.is_configured():
+            raise RuntimeError("Gemini API key is not configured.")
+
+        prompt = CODING_EXPLANATION_PROMPT.format(
+            title=problem_title,
+            difficulty=difficulty,
+            category=category,
+            description=problem_description,
+        )
+
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+        )
+
+        if not response or not response.text:
+            raise ValueError("Empty response received from Gemini model for explanation.")
+
+        parsed = self._clean_and_parse_json(response.text)
+
+        def sanitize_list(lst):
+            if not isinstance(lst, list):
+                return [str(lst)] if lst else []
+            return [str(x).strip() for x in lst if x]
+
+        return {
+            "title": problem_title,
+            "difficulty": difficulty,
+            "category": category,
+            "intuition": str(parsed.get("intuition", "")).strip(),
+            "brute_force": str(parsed.get("brute_force", "")).strip(),
+            "optimized_approach": str(parsed.get("optimized_approach", "")).strip(),
+            "step_by_step": sanitize_list(parsed.get("step_by_step", [])),
+            "time_complexity": str(parsed.get("time_complexity", "")).strip(),
+            "space_complexity": str(parsed.get("space_complexity", "")).strip(),
+            "common_mistakes": sanitize_list(parsed.get("common_mistakes", [])),
+            "edge_cases": sanitize_list(parsed.get("edge_cases", [])),
+            "interview_tips": sanitize_list(parsed.get("interview_tips", [])),
+            "provider": "gemini",
+        }
 
 
 

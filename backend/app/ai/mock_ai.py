@@ -30,27 +30,8 @@ def generate_question(job_role: str, interview_type: str, difficulty: str, skill
     return random.choice(role_questions)
 
 def evaluate_answer(question: str, answer: str):
-    # Mock evaluation logic
-    length = len(answer.split())
-    if length > 50:
-        base_score = 90
-        feedback = "Great answer, very detailed."
-    elif length > 20:
-        base_score = 75
-        feedback = "Good answer, but could use more detail."
-    else:
-        base_score = 50
-        feedback = "Too short. Please provide more context."
-
-    # Add some randomness to make it look real
-    return {
-        "score": base_score + random.randint(-5, 5),
-        "technical_score": base_score + random.randint(-5, 5),
-        "communication_score": base_score + random.randint(-5, 5),
-        "relevance_score": base_score + random.randint(-5, 5),
-        "completeness_score": base_score + random.randint(-5, 5),
-        "feedback": feedback
-    }
+    from app.services.mock_ai_service import evaluate_answer_mock
+    return evaluate_answer_mock(question, answer)
 
 def generate_feedback(interview_id: int):
     return {

@@ -4,9 +4,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.models.models import CodingProblem, TestCase, User
-from app.schemas.schemas import CodingProblemSummary, CodingProblemDetail, CodeRunRequest, CodeRunResponse, CodingSubmissionResponse, CodingSubmissionDetail, CodingFeedbackResponse
+from app.schemas.schemas import (
+    CodingProblemSummary,
+    CodingProblemDetail,
+    CodeRunRequest,
+    CodeRunResponse,
+    CodingSubmissionResponse,
+    CodingSubmissionDetail,
+    CodingFeedbackResponse,
+    CodingHintRequest,
+    CodingHintResponse,
+    CodingExplanationResponse,
+    ProblemRecommendationsResponse,
+    CodingSkillsResponse,
+)
 from app.api.profile_routes import get_current_user
 from app.services.executor import get_code_executor, CODE_MAX_SOURCE_SIZE
+from app.services.coding_progress import check_problem_access
+from app.services.coding_mentor import get_problem_recommendations, get_user_skill_analytics
 
 router = APIRouter(
     prefix="/api/coding",
@@ -263,7 +278,7 @@ def seed_problems_if_needed(db: Session):
             db.add(problem)
         db.commit()
 
-    # Seed test cases if missing
+    # Seed test cases for original problems if missing
     problems = db.query(CodingProblem).all()
     for prob in problems:
         tc_count = db.query(TestCase).filter(TestCase.problem_id == prob.id).count()
@@ -277,6 +292,10 @@ def seed_problems_if_needed(db: Session):
                 )
                 db.add(test_case)
             db.commit()
+
+    # Seed modules and expanded curriculum idempotently
+    from app.services.coding_progress import seed_coding_system_if_needed
+    seed_coding_system_if_needed(db)
 
 @router.get("/problems", response_model=List[CodingProblemSummary])
 def get_coding_problems(
@@ -294,7 +313,7 @@ def get_coding_problem_detail(
     current_user: User = Depends(get_current_user)
 ):
     seed_problems_if_needed(db)
-    
+
     # Allow lookup by integer ID or string slug
     if problem_id.isdigit():
         problem = db.query(CodingProblem).filter(CodingProblem.id == int(problem_id)).first()
@@ -306,7 +325,7 @@ def get_coding_problem_detail(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Coding problem not found"
         )
-        
+
     return problem
 
 @router.post("/run", response_model=CodeRunResponse)
@@ -323,6 +342,15 @@ def run_code(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Coding problem not found"
+        )
+
+    # 1b. Server-side module unlock authorization check
+    from app.services.coding_progress import check_problem_access
+    accessible, reason = check_problem_access(db, problem, current_user.id if current_user else None)
+    if not accessible:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=reason or "Problem is locked. Complete prerequisite module requirements to unlock."
         )
 
     # 2. Validate language against allowlist
@@ -393,6 +421,15 @@ def submit_code(
     if not problem:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coding problem not found")
 
+    # Server-side module unlock authorization check
+    from app.services.coding_progress import check_problem_access
+    accessible, reason = check_problem_access(db, problem, current_user.id if current_user else None)
+    if not accessible:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=reason or "Problem is locked. Complete prerequisite module requirements to unlock."
+        )
+
     supported_langs = json.loads(problem.supported_languages) if problem.supported_languages else ["python", "java", "cpp"]
     lang_clean = payload.language.lower().strip()
     if lang_clean not in supported_langs or lang_clean not in ["python", "java", "cpp"]:
@@ -413,14 +450,14 @@ def submit_code(
     try:
         executor = get_code_executor()
         execution_result = executor.execute(code=payload.code, language=lang_clean, test_cases=test_cases_list)
-        
+
         # Calculate score and determine status
         passed = execution_result.get("passed", 0)
         total = execution_result.get("total", len(test_cases_list))
         exec_status = execution_result.get("status", "execution_error")
-        
+
         score = round((passed / total) * 100) if total > 0 else 0
-        
+
         if exec_status == "completed":
             final_status = "accepted" if passed == total else "wrong_answer"
         else:
@@ -446,10 +483,10 @@ def submit_code(
         db.add(submission)
         db.commit()
         db.refresh(submission)
-        
+
         # We don't expose hidden tests inputs/outputs, even in the execution results if it was passed through.
         # But this is just saving the record. The submission detail will be returned.
-        
+
         return {
             "id": submission.id,
             "problem_id": submission.problem_id,
@@ -464,7 +501,7 @@ def submit_code(
             "created_at": submission.created_at,
             "source_code": submission.source_code
         }
-        
+
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Execution service error occurred")
@@ -480,9 +517,9 @@ def get_submissions(
     query = db.query(CodingSubmission).filter(CodingSubmission.user_id == current_user.id)
     if problem_id:
         query = query.filter(CodingSubmission.problem_id == problem_id)
-        
+
     submissions = query.order_by(CodingSubmission.created_at.desc()).all()
-    
+
     results = []
     for sub in submissions:
         prob = db.query(CodingProblem).filter(CodingProblem.id == sub.problem_id).first()
@@ -513,12 +550,12 @@ def get_submission_detail(
         CodingSubmission.id == submission_id,
         CodingSubmission.user_id == current_user.id
     ).first()
-    
+
     if not submission:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found or unauthorized")
-        
+
     prob = db.query(CodingProblem).filter(CodingProblem.id == submission.problem_id).first()
-    
+
     result = {
         "id": submission.id,
         "problem_id": submission.problem_id,
@@ -533,7 +570,7 @@ def get_submission_detail(
         "created_at": submission.created_at,
         "source_code": submission.source_code
     }
-    
+
     if submission.feedback:
         result["feedback"] = {
             "id": submission.feedback.id,
@@ -551,7 +588,7 @@ def get_submission_detail(
             "provider": submission.feedback.provider,
             "created_at": submission.feedback.created_at
         }
-        
+
     return result
 
 @router.post("/submissions/{submission_id}/feedback", response_model=CodingFeedbackResponse)
@@ -562,15 +599,16 @@ def get_coding_feedback(
 ):
     from app.models.models import CodingSubmission, CodingFeedback
     from app.services.ai_service import ai_service
-    
+    seed_problems_if_needed(db)
+
     submission = db.query(CodingSubmission).filter(
         CodingSubmission.id == submission_id,
         CodingSubmission.user_id == current_user.id
     ).first()
-    
+
     if not submission:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found or unauthorized")
-        
+
     if submission.feedback:
         return {
             "id": submission.feedback.id,
@@ -588,9 +626,9 @@ def get_coding_feedback(
             "provider": submission.feedback.provider,
             "created_at": submission.feedback.created_at
         }
-        
+
     prob = db.query(CodingProblem).filter(CodingProblem.id == submission.problem_id).first()
-    
+
     try:
         feedback_data = ai_service.generate_coding_feedback(
             problem_title=prob.title,
@@ -604,7 +642,7 @@ def get_coding_feedback(
             passed_tests=submission.passed_tests,
             total_tests=submission.total_tests
         )
-        
+
         feedback = CodingFeedback(
             submission_id=submission.id,
             summary=feedback_data.get("summary", ""),
@@ -619,11 +657,11 @@ def get_coding_feedback(
             interview_tips=json.dumps(feedback_data.get("interview_tips", [])),
             provider=feedback_data.get("provider", "mock")
         )
-        
+
         db.add(feedback)
         db.commit()
         db.refresh(feedback)
-        
+
         return {
             "id": feedback.id,
             "submission_id": feedback.submission_id,
@@ -640,8 +678,148 @@ def get_coding_feedback(
             "provider": feedback.provider,
             "created_at": feedback.created_at
         }
-        
+
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to generate AI feedback: {str(e)}")
 
+
+@router.post("/problems/{problem_id}/hints", response_model=CodingHintResponse)
+def get_progressive_hint(
+    problem_id: int,
+    payload: CodingHintRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns a progressive hint (Level 1: Conceptual, Level 2: Approach, Level 3: Detailed).
+    Enforces server-side problem access authorization.
+    """
+    if payload.level not in [1, 2, 3]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Hint level must be 1, 2, or 3."
+        )
+
+    seed_problems_if_needed(db)
+    problem = db.query(CodingProblem).filter(CodingProblem.id == problem_id).first()
+    if not problem:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Coding problem not found"
+        )
+
+    # Server-side module unlock authorization check
+    accessible, reason = check_problem_access(db, problem, current_user.id if current_user else None)
+    if not accessible:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=reason or "Problem is locked. Complete prerequisite module requirements to unlock."
+        )
+
+    from app.services.ai_service import ai_service
+    hint_data = ai_service.generate_coding_hint(
+        problem_title=problem.title,
+        problem_description=problem.description,
+        difficulty=problem.difficulty,
+        category=problem.category,
+        level=payload.level,
+    )
+
+    return {
+        "problem_id": problem.id,
+        "level": payload.level,
+        "title": hint_data.get("title", f"Level {payload.level} Guidance"),
+        "hint": hint_data.get("hint", ""),
+        "key_takeaways": hint_data.get("key_takeaways", []),
+        "edge_cases": hint_data.get("edge_cases", []),
+        "provider": hint_data.get("provider", "mock"),
+    }
+
+
+@router.get("/problems/{problem_id}/explanation", response_model=CodingExplanationResponse)
+def get_problem_explanation(
+    problem_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns an educational solution explanation covering intuition, brute-force, optimal approach,
+    complexities, common mistakes, edge cases, and interview tips.
+    Enforces server-side problem access authorization.
+    """
+    seed_problems_if_needed(db)
+    problem = db.query(CodingProblem).filter(CodingProblem.id == problem_id).first()
+    if not problem:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Coding problem not found"
+        )
+
+    # Server-side module unlock authorization check
+    accessible, reason = check_problem_access(db, problem, current_user.id if current_user else None)
+    if not accessible:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=reason or "Problem is locked. Complete prerequisite module requirements to unlock."
+        )
+
+    from app.services.ai_service import ai_service
+    explanation_data = ai_service.generate_coding_explanation(
+        problem_title=problem.title,
+        problem_description=problem.description,
+        difficulty=problem.difficulty,
+        category=problem.category,
+    )
+
+    # Starter/solution templates provided safely
+    starter_code_dict = {}
+    if problem.starter_code:
+        try:
+            starter_code_dict = json.loads(problem.starter_code)
+        except Exception:
+            pass
+
+    return {
+        "problem_id": problem.id,
+        "title": problem.title,
+        "difficulty": problem.difficulty,
+        "category": problem.category,
+        "intuition": explanation_data.get("intuition", ""),
+        "brute_force": explanation_data.get("brute_force", ""),
+        "optimized_approach": explanation_data.get("optimized_approach", ""),
+        "step_by_step": explanation_data.get("step_by_step", []),
+        "time_complexity": explanation_data.get("time_complexity", "O(N)"),
+        "space_complexity": explanation_data.get("space_complexity", "O(1)"),
+        "common_mistakes": explanation_data.get("common_mistakes", []),
+        "edge_cases": explanation_data.get("edge_cases", []),
+        "interview_tips": explanation_data.get("interview_tips", []),
+        "solution_code": starter_code_dict,
+        "provider": explanation_data.get("provider", "mock"),
+    }
+
+
+@router.get("/recommendations", response_model=ProblemRecommendationsResponse)
+def get_recommendations_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns personalized, explainable problem recommendations across 4 categories:
+    Continue Learning, Review Previous Mistakes, Practice Weak Topics, Increase Difficulty.
+    """
+    seed_problems_if_needed(db)
+    return get_problem_recommendations(db, current_user.id)
+
+
+@router.get("/skills", response_model=CodingSkillsResponse)
+def get_skills_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns personalized coding skill analytics, difficulty breakdown, topic stats,
+    stronger topics, topics needing practice, and suggested next steps.
+    """
+    seed_problems_if_needed(db)
+    return get_user_skill_analytics(db, current_user.id)

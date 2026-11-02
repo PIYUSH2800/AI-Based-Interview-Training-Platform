@@ -13,6 +13,11 @@ router = APIRouter(
 
 @router.post("", response_model=schemas.Interview)
 def create_interview(interview: schemas.InterviewCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if interview.total_questions not in schemas.ALLOWED_TOTAL_QUESTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"total_questions must be one of {schemas.ALLOWED_TOTAL_QUESTIONS}, got {interview.total_questions}"
+        )
     db_interview = models.Interview(
         user_id=current_user.id,
         job_role=interview.job_role,

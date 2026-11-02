@@ -12,12 +12,14 @@ class User(Base):
     password_hash = Column(String)
     education = Column(String)
     experience_level = Column(String)
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     profile = relationship("Profile", back_populates="user", uselist=False)
     interviews = relationship("Interview", back_populates="user")
     recommendations = relationship("Recommendation", back_populates="user")
     coding_submissions = relationship("CodingSubmission", back_populates="user")
+    password_reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
 
 
 class Profile(Base):
@@ -99,6 +101,23 @@ class Recommendation(Base):
     user = relationship("User", back_populates="recommendations")
 
 
+class CodingModule(Base):
+    __tablename__ = "coding_modules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(50), unique=True, index=True)
+    title = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    order_index = Column(Integer, default=1)
+    icon_name = Column(String(50), default="Code")
+    prerequisite_module_id = Column(Integer, ForeignKey("coding_modules.id"), nullable=True)
+    required_prerequisite_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    prerequisite_module = relationship("CodingModule", remote_side=[id], backref="dependent_modules")
+    problems = relationship("CodingProblem", back_populates="module", order_by="CodingProblem.order_index")
+
+
 class CodingProblem(Base):
     __tablename__ = "coding_problems"
 
@@ -112,8 +131,11 @@ class CodingProblem(Base):
     constraints = Column(Text) # JSON string of constraints
     starter_code = Column(Text) # JSON string mapping language to code template
     supported_languages = Column(Text) # JSON string list of supported languages
+    module_id = Column(Integer, ForeignKey("coding_modules.id"), nullable=True)
+    order_index = Column(Integer, default=1)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    module = relationship("CodingModule", back_populates="problems")
     test_cases = relationship("TestCase", back_populates="problem", cascade="all, delete-orphan")
 
 
@@ -169,3 +191,16 @@ class CodingFeedback(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     submission = relationship("CodingSubmission", back_populates="feedback")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="password_reset_tokens")

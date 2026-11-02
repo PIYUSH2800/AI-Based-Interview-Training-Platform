@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -17,6 +17,27 @@ class User(UserBase):
 
     id: int
     created_at: datetime
+
+# --- Password Reset Schemas ---
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters long")
+        return v
+
+class ResetPasswordResponse(BaseModel):
+    message: str
 
 # --- Profile Schemas ---
 class ProfileBase(BaseModel):
@@ -114,6 +135,8 @@ class Question(QuestionBase):
     answer: Optional[Answer] = None
 
 # --- Interview Schemas ---
+ALLOWED_TOTAL_QUESTIONS = [3, 5, 10, 15, 20]
+
 class InterviewBase(BaseModel):
     job_role: str
     interview_type: str
@@ -122,7 +145,12 @@ class InterviewBase(BaseModel):
     total_questions: int
 
 class InterviewCreate(InterviewBase):
-    pass
+    @field_validator("total_questions")
+    @classmethod
+    def validate_total_questions(cls, v: int) -> int:
+        if v not in ALLOWED_TOTAL_QUESTIONS:
+            raise ValueError(f"total_questions must be one of {ALLOWED_TOTAL_QUESTIONS}, got {v}")
+        return v
 
 class Interview(InterviewBase):
     model_config = ConfigDict(from_attributes=True)
@@ -148,6 +176,10 @@ class CodingProblemSummary(BaseModel):
     slug: str
     difficulty: str
     category: str
+    module_id: Optional[int] = None
+    order_index: Optional[int] = 1
+    is_solved: Optional[bool] = False
+    is_locked: Optional[bool] = False
 
 class CodingProblemDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -163,6 +195,41 @@ class CodingProblemDetail(BaseModel):
     starter_code: str  # JSON formatted string or dict
     supported_languages: str  # JSON formatted string or list
     created_at: datetime
+    module_id: Optional[int] = None
+    order_index: Optional[int] = 1
+    is_solved: Optional[bool] = False
+    is_locked: Optional[bool] = False
+
+
+# --- Coding Module & Progressive Learning Schemas ---
+class CodingModuleSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    slug: str
+    title: str
+    description: Optional[str] = None
+    order_index: int
+    icon_name: str = "Code"
+    prerequisite_module_id: Optional[int] = None
+    required_prerequisite_count: int = 0
+    total_problems: int = 0
+    solved_problems: int = 0
+    is_unlocked: bool = True
+    unlock_requirement: str = "Available"
+
+class CodingModuleDetail(CodingModuleSummary):
+    model_config = ConfigDict(from_attributes=True)
+
+    problems: List[CodingProblemSummary] = []
+
+class UserCodingProgressResponse(BaseModel):
+    total_problems: int
+    total_unique_solved: int
+    overall_progress_percent: float
+    unlocked_modules_count: int
+    total_modules_count: int
+    modules: List[CodingModuleSummary] = []
 
 
 # --- Code Execution Schemas ---
@@ -315,3 +382,77 @@ class InterviewIntelligenceResponse(BaseModel):
     improvement_areas: List[str] = []
     practice_recommendations: List[str] = []
     ai_summary: str = ""
+
+
+# --- Checkpoint 10F AI Coding Mentor Schemas ---
+
+class CodingHintRequest(BaseModel):
+    level: int  # 1, 2, or 3
+
+
+class CodingHintResponse(BaseModel):
+    problem_id: int
+    level: int
+    title: str
+    hint: str
+    key_takeaways: List[str] = []
+    edge_cases: List[str] = []
+    provider: str = "mock"
+
+
+class CodingExplanationResponse(BaseModel):
+    problem_id: int
+    title: str
+    difficulty: str
+    category: str
+    intuition: str
+    brute_force: str
+    optimized_approach: str
+    step_by_step: List[str] = []
+    time_complexity: str
+    space_complexity: str
+    common_mistakes: List[str] = []
+    edge_cases: List[str] = []
+    interview_tips: List[str] = []
+    solution_code: Optional[dict] = None
+    provider: str = "mock"
+
+
+class ProblemRecommendationItem(BaseModel):
+    problem: CodingProblemSummary
+    category: str  # "Continue Learning" | "Practice Weak Topics" | "Increase Difficulty" | "Review Previous Mistakes"
+    reason: str
+    priority: int
+
+
+class ProblemRecommendationsResponse(BaseModel):
+    total_recommended: int
+    recommendations: List[ProblemRecommendationItem] = []
+
+
+class TopicSkillStats(BaseModel):
+    topic: str
+    total_problems: int
+    solved_problems: int
+    attempts: int
+    success_rate: float
+
+
+class DifficultySkillStats(BaseModel):
+    difficulty: str
+    total_problems: int
+    solved_problems: int
+    attempts: int
+    success_rate: float
+
+
+class CodingSkillsResponse(BaseModel):
+    total_unique_solved: int
+    total_problems: int
+    total_submissions: int
+    overall_acceptance_rate: float
+    difficulty_breakdown: List[DifficultySkillStats] = []
+    topic_breakdown: List[TopicSkillStats] = []
+    stronger_topics: List[str] = []
+    topics_needing_practice: List[str] = []
+    suggested_next_steps: List[str] = []

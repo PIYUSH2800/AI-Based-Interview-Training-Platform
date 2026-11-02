@@ -4,14 +4,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from app.database.database import engine, Base
-from app.api import auth_routes, profile_routes, interview_routes, ai_routes, resume_routes, coding_routes, analytics_routes
+from app.database.migration_coding_system import run_coding_system_migration
+from app.database.migration_password_reset import run_password_reset_migration
+from app.api import auth_routes, profile_routes, interview_routes, ai_routes, resume_routes, coding_routes, analytics_routes, module_routes
 
 load_dotenv()
 
 logger = logging.getLogger("main")
 
-# Create database tables
+# Create database tables and execute non-destructive migrations
 Base.metadata.create_all(bind=engine)
+run_coding_system_migration(engine)
+run_password_reset_migration(engine)
 
 app = FastAPI(
     title="AI Interview Platform API",
@@ -58,6 +62,7 @@ app.include_router(ai_routes.router)
 app.include_router(resume_routes.router)
 app.include_router(coding_routes.router)
 app.include_router(analytics_routes.router)
+app.include_router(module_routes.router)
 
 
 @app.get("/")

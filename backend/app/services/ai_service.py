@@ -8,6 +8,8 @@ from app.services.mock_ai_service import (
     generate_communication_feedback_mock,
     generate_adaptive_question_mock,
     generate_interview_intelligence_summary_mock,
+    generate_coding_hint_mock,
+    generate_coding_explanation_mock,
 )
 
 logger = logging.getLogger("ai_service")
@@ -74,6 +76,27 @@ class AIService:
         difficulty: str = "Intermediate",
         candidate_context: dict = None
     ) -> dict:
+        # Pre-validate answer before dispatching
+        from app.services.answer_validator import validate_answer_meaningfulness
+        val = validate_answer_meaningfulness(question_text, answer_text)
+        if not val.is_valid:
+            return {
+                "score": 0,
+                "technical_score": 0,
+                "communication_score": 0,
+                "relevance_score": 0,
+                "completeness_score": 0,
+                "feedback": (
+                    "The submitted response is unintelligible, empty, or contains no meaningful "
+                    "technical explanation addressing the question. Please provide a relevant and structured answer."
+                ),
+                "strengths": [],
+                "improvements": [
+                    "Provide a coherent answer addressing the core question",
+                    "Explain the concept using standard technical terminology"
+                ]
+            }
+
         if self.real_ai.is_configured() and self.is_ai_enabled():
             try:
                 evaluation = self.real_ai.evaluate_answer(
@@ -100,16 +123,16 @@ class AIService:
 
         if not answers:
             return {
-                "overall_score": 75.0,
+                "overall_score": 0.0,
                 "category_breakdown": [
-                    {"name": "Technical", "score": 75.0},
-                    {"name": "Comm.", "score": 75.0},
-                    {"name": "Relevance", "score": 75.0},
-                    {"name": "Completeness", "score": 75.0},
+                    {"name": "Technical", "score": 0.0},
+                    {"name": "Comm.", "score": 0.0},
+                    {"name": "Relevance", "score": 0.0},
+                    {"name": "Completeness", "score": 0.0},
                 ],
-                "strengths": ["Completed mock interview session"],
-                "weaknesses": ["Provide more detailed answers"],
-                "recommendations": ["Practice core fundamental questions for your target role"]
+                "strengths": ["Completed mock interview session attempt"],
+                "weaknesses": ["No answers were submitted during this interview session"],
+                "recommendations": ["Practice answering interview questions and submit responses for evaluation"]
             }
 
         tech_scores = [a.technical_score for a in answers if a.technical_score is not None]
@@ -118,11 +141,11 @@ class AIService:
         comp_scores = [a.completeness_score for a in answers if a.completeness_score is not None]
         overall_scores = [a.score for a in answers if a.score is not None]
 
-        avg_tech = round(sum(tech_scores) / len(tech_scores), 1) if tech_scores else 75.0
-        avg_comm = round(sum(comm_scores) / len(comm_scores), 1) if comm_scores else 75.0
-        avg_rel = round(sum(rel_scores) / len(rel_scores), 1) if rel_scores else 75.0
-        avg_comp = round(sum(comp_scores) / len(comp_scores), 1) if comp_scores else 75.0
-        avg_overall = round(sum(overall_scores) / len(overall_scores), 1) if overall_scores else 75.0
+        avg_tech = round(sum(tech_scores) / len(tech_scores), 1) if tech_scores else 0.0
+        avg_comm = round(sum(comm_scores) / len(comm_scores), 1) if comm_scores else 0.0
+        avg_rel = round(sum(rel_scores) / len(rel_scores), 1) if rel_scores else 0.0
+        avg_comp = round(sum(comp_scores) / len(comp_scores), 1) if comp_scores else 0.0
+        avg_overall = round(sum(overall_scores) / len(overall_scores), 1) if overall_scores else 0.0
 
         # Collect unique feedback insights
         strengths = []
@@ -131,8 +154,31 @@ class AIService:
             if a.feedback:
                 if a.score and a.score >= 75:
                     strengths.append(a.feedback)
-                else:
+                elif a.score and a.score > 0:
                     weaknesses.append(a.feedback)
+                else:
+                    weaknesses.append("Response lacked meaningful technical explanation.")
+
+        if avg_overall == 0.0:
+            strengths = ["Completed mock interview session attempt"]
+            weaknesses = ["All submitted responses were uninterpretable or off-topic"]
+            recommendations = [
+                "Review core technical fundamentals for your target role",
+                "Ensure answers directly address the question with standard concepts",
+                "Practice speaking or typing structured technical explanations"
+            ]
+            return {
+                "overall_score": 0.0,
+                "category_breakdown": [
+                    {"name": "Technical", "score": 0.0},
+                    {"name": "Comm.", "score": 0.0},
+                    {"name": "Relevance", "score": 0.0},
+                    {"name": "Completeness", "score": 0.0},
+                ],
+                "strengths": strengths,
+                "weaknesses": weaknesses,
+                "recommendations": recommendations
+            }
 
         if not strengths:
             strengths = ["Solid effort and technical understanding", "Good problem-solving approach"]
@@ -206,6 +252,73 @@ class AIService:
         feedback["provider"] = "mock"
         return feedback
 
+    def generate_coding_hint(
+        self,
+        problem_title: str,
+        problem_description: str,
+        difficulty: str,
+        category: str,
+        level: int,
+    ) -> dict:
+        """Generate a progressive hint for a coding problem, using Gemini or falling back to mock."""
+        if self.real_ai.is_configured() and self.is_ai_enabled():
+            try:
+                hint = self.real_ai.generate_coding_hint(
+                    problem_title=problem_title,
+                    problem_description=problem_description,
+                    difficulty=difficulty,
+                    category=category,
+                    level=level,
+                )
+                logger.info(f"Generated coding hint Level {level} via Gemini API.")
+                hint["provider"] = "gemini"
+                return hint
+            except Exception as e:
+                logger.warning(f"[AI Fallback] Gemini hint generation failed ({e}). Falling back to Mock AI.")
+                if not self.is_fallback_enabled():
+                    raise e
+
+        hint = generate_coding_hint_mock(
+            problem_title=problem_title,
+            category=category,
+            difficulty=difficulty,
+            level=level,
+        )
+        hint["provider"] = "mock"
+        return hint
+
+    def generate_coding_explanation(
+        self,
+        problem_title: str,
+        problem_description: str,
+        difficulty: str,
+        category: str,
+    ) -> dict:
+        """Generate educational solution explanation, using Gemini or falling back to mock."""
+        if self.real_ai.is_configured() and self.is_ai_enabled():
+            try:
+                exp = self.real_ai.generate_coding_explanation(
+                    problem_title=problem_title,
+                    problem_description=problem_description,
+                    difficulty=difficulty,
+                    category=category,
+                )
+                logger.info("Generated coding explanation via Gemini API.")
+                exp["provider"] = "gemini"
+                return exp
+            except Exception as e:
+                logger.warning(f"[AI Fallback] Gemini explanation failed ({e}). Falling back to Mock AI.")
+                if not self.is_fallback_enabled():
+                    raise e
+
+        exp = generate_coding_explanation_mock(
+            problem_title=problem_title,
+            category=category,
+            difficulty=difficulty,
+            description=problem_description,
+        )
+        exp["provider"] = "mock"
+        return exp
 
     def generate_communication_feedback(
         self,

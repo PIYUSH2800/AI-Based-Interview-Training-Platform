@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from app.services.output_comparator import compare_outputs
 
 # Configurable Execution Limits from Environment Variables
-CODE_EXECUTION_TIMEOUT = float(os.getenv("CODE_EXECUTION_TIMEOUT", "5.0"))
+CODE_EXECUTION_TIMEOUT = float(os.getenv("CODE_EXECUTION_TIMEOUT", "10.0"))
 CODE_MAX_SOURCE_SIZE = int(os.getenv("CODE_MAX_SOURCE_SIZE", "65536"))  # 64 KB
 CODE_MAX_OUTPUT_SIZE = int(os.getenv("CODE_MAX_OUTPUT_SIZE", "10000"))
 CODE_EXECUTION_MEMORY = os.getenv("CODE_EXECUTION_MEMORY", "128m")
@@ -162,8 +162,12 @@ class DockerCodeExecutor(CodeExecutor):
             tc_input = tc.get("input", "")
             tc_expected = tc.get("expected_output", "")
 
-            # Wrapper script to run code or harness
-            harness = f"""
+            has_entrypoint = "__name__" in code and ("'__main__'" in code or '"__main__"' in code)
+            target_script = "solution.py" if has_entrypoint else "harness.py"
+
+            if not has_entrypoint:
+                # Wrapper script to run function or class methods
+                harness = f"""
 import sys, json
 
 {code}
@@ -171,7 +175,6 @@ import sys, json
 # Test execution wrapper
 if __name__ == '__main__':
     raw_input = sys.stdin.read().strip()
-    # Try calling function if defined or fallback to running stdin
     lines = [l.strip() for l in raw_input.split('\\n') if l.strip()]
     
     # Attempt twoSum
@@ -247,13 +250,53 @@ if __name__ == '__main__':
             import traceback
             traceback.print_exc(file=sys.stderr)
             sys.exit(1)
+
+    # Generic function caller fallback for curriculum problems
+    excluded = {'json', 'sys', 'traceback'}
+    candidate_funcs = [
+        (name, obj) for name, obj in globals().items()
+        if callable(obj) and not isinstance(obj, type) and not name.startswith('_') and name not in excluded
+    ]
+    if not candidate_funcs and 'Solution' in globals() and isinstance(globals()['Solution'], type):
+        sol_inst = globals()['Solution']()
+        candidate_funcs = [
+            (name, getattr(sol_inst, name)) for name in dir(sol_inst)
+            if callable(getattr(sol_inst, name)) and not name.startswith('_')
+        ]
+    if candidate_funcs:
+        target_name, target_fn = candidate_funcs[-1]
+        try:
+            parsed_args = []
+            for line in lines:
+                try:
+                    parsed_args.append(json.loads(line))
+                except Exception:
+                    try:
+                        parsed_args.append(int(line))
+                    except Exception:
+                        parsed_args.append(line)
+            res = target_fn(*parsed_args)
+            if res is None:
+                if parsed_args:
+                    print(json.dumps(parsed_args[0]))
+            elif isinstance(res, bool):
+                print("true" if res else "false")
+            elif isinstance(res, (dict, list)):
+                print(json.dumps(res))
+            else:
+                print(res)
+            sys.exit(0)
+        except Exception:
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            sys.exit(1)
 """
-            with open(os.path.join(temp_dir, "harness.py"), "w", encoding="utf-8") as f:
-                f.write(harness)
+                with open(os.path.join(temp_dir, "harness.py"), "w", encoding="utf-8") as f:
+                    f.write(harness)
 
             code_status, stdout, stderr, exec_time = self._run_docker_container(
                 image="python:3.11-slim",
-                cmd=["python3", "harness.py"],
+                cmd=["python3", target_script],
                 temp_dir=temp_dir,
                 stdin_data=tc_input,
                 timeout=limits.timeout,

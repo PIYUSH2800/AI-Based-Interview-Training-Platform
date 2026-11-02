@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from app.database.database import get_db
 from app.models import models
 from app.schemas import schemas
 from fastapi.security import OAuth2PasswordBearer
 from app.auth.auth import SECRET_KEY, ALGORITHM
+from datetime import timezone
 from jose import JWTError, jwt
 
 router = APIRouter(
@@ -27,12 +28,42 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
+        token_iat = payload.get("iat")
     except JWTError:
         raise credentials_exception
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         raise credentials_exception
+
+    # Session invalidation: reject tokens issued before user changed their password
+    if getattr(user, "password_changed_at", None) and token_iat is not None:
+        pwd_changed_ts = int(
+            user.password_changed_at.replace(tzinfo=timezone.utc).timestamp()
+            if user.password_changed_at.tzinfo is None
+            else user.password_changed_at.timestamp()
+        )
+        if token_iat < pwd_changed_ts:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Password was recently changed. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     return user
+
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="api/auth/login", auto_error=False)
+
+def get_current_user_optional(token: Optional[str] = Depends(oauth2_scheme_optional), db: Session = Depends(get_db)):
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if not email:
+            return None
+        return db.query(models.User).filter(models.User.email == email).first()
+    except JWTError:
+        return None
 
 def build_user_profile_response(user: models.User, profile: models.Profile) -> schemas.UserProfileResponse:
     return schemas.UserProfileResponse(

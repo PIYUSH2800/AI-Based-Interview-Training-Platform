@@ -94,11 +94,15 @@ def api_generate_question(
     # Fetch candidate profile & resume context if available
     profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
     
+    # Safely extract skills from request or profile, guarding against None values
+    profile_skills = (profile.skills or "").strip() if profile and profile.skills else ""
+    candidate_skills = (req.skills or "").strip() or profile_skills
+
     candidate_context = {
-        "education": current_user.education or (profile.degree if profile else None),
-        "experience_level": current_user.experience_level,
-        "skills": req.skills or (profile.skills if profile else ""),
-        "target_role": profile.target_role if profile else req.job_role,
+        "education": current_user.education or (profile.degree if profile and profile.degree else None),
+        "experience_level": current_user.experience_level or "Entry Level",
+        "skills": candidate_skills,
+        "target_role": (profile.target_role if profile and profile.target_role else req.job_role),
         "resume_text": ""
     }
 
@@ -135,8 +139,8 @@ def api_generate_question(
 
         # Topic coverage state calculation
         topics_covered = [q.topic for q in questions if q.topic]
-        raw_skills = req.skills or (profile.skills if profile else "")
-        candidate_skills_list = [s.strip() for s in raw_skills.split(",") if s.strip()]
+        raw_skills = candidate_skills
+        candidate_skills_list = [s.strip() for s in raw_skills.split(",") if s.strip()] if raw_skills else []
 
         all_candidate_topics = candidate_skills_list or [req.job_role]
         under_covered_topics = [
@@ -251,7 +255,7 @@ def api_evaluate_answer(
     candidate_context = {
         "education": current_user.education,
         "experience_level": current_user.experience_level,
-        "skills": profile.skills if profile else "",
+        "skills": (profile.skills or "").strip() if profile and profile.skills else "",
     }
 
     evaluation = ai_service.evaluate_answer(

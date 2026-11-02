@@ -8,6 +8,28 @@ It is built to be easily testable, configurable, and deployable, making it an ex
 
 ---
 
+## 🚀 Quick Start — Localhost College Demonstration
+
+For full viva and college presentation instructions, see **[LOCALHOST_DEMONSTRATION_GUIDE.md](LOCALHOST_DEMONSTRATION_GUIDE.md)**.
+
+### 1-Click Startup (Windows)
+1. Ensure **Docker Desktop** is running.
+2. Double-click **`start_demo.bat`** in the project root.
+3. Both servers will launch automatically:
+   - **Frontend UI:** `http://localhost:5173`
+   - **Backend API:** `http://localhost:8000` (Swagger Docs: `http://localhost:8000/docs`)
+
+### Pre-Flight Verification Script
+Run the automated environment diagnostic anytime:
+```bash
+python verify_environment.py
+```
+
+### Stop Servers
+Double-click **`stop_servers.bat`** to cleanly terminate running servers and free ports 8000 and 5173.
+
+---
+
 ## Feature List
 
 ### Authentication

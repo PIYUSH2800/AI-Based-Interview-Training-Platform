@@ -18,7 +18,25 @@ def normalize_output(text: str) -> str:
 def compare_outputs(actual: str, expected: str) -> bool:
     """
     Compares actual stdout with expected output deterministically.
+    Supports exact text match, JSON structure equivalence, and boolean case-insensitivity.
     """
     norm_actual = normalize_output(actual)
     norm_expected = normalize_output(expected)
-    return norm_actual == norm_expected
+    if norm_actual == norm_expected:
+        return True
+
+    # Check boolean case-insensitivity (e.g. true vs True)
+    if norm_actual.lower() in ("true", "false") and norm_expected.lower() in ("true", "false"):
+        return norm_actual.lower() == norm_expected.lower()
+
+    # Check JSON equivalence for arrays or objects
+    if (norm_actual.startswith(("{", "[")) and norm_actual.endswith(("}", "]"))) or \
+       (norm_expected.startswith(("{", "[")) and norm_expected.endswith(("}", "]"))):
+        try:
+            import json
+            if json.loads(norm_actual) == json.loads(norm_expected):
+                return True
+        except Exception:
+            pass
+
+    return False

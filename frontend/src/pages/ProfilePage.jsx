@@ -1,24 +1,26 @@
 import React, { useState, useEffect, useContext } from 'react';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
-import { 
-  User, Mail, GraduationCap, Briefcase, Phone, CheckCircle, 
-  AlertCircle, Save, FileText, Upload, Trash2, Download, 
-  Sparkles, RefreshCw, FileCheck
+import {
+  User, Mail, GraduationCap, Briefcase, Phone, CheckCircle,
+  AlertCircle, Save, FileText, Upload, Trash2, Download,
+  Sparkles, RefreshCw, FileCheck, Loader2,
 } from 'lucide-react';
+import { PageHeader, SectionCard, AlertBanner } from '../components/ui';
+
+// ── Reusable field wrapper ────────────────────────────────────────────────────
+const Field = ({ label, children, className = '' }) => (
+  <div className={className}>
+    <label className="form-label">{label}</label>
+    {children}
+  </div>
+);
 
 const ProfilePage = () => {
   const { user, updateUser, fetchUserProfile } = useContext(AuthContext);
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    education: '',
-    experience_level: 'Entry Level',
-    phone: '',
-    college: '',
-    degree: '',
-    skills: '',
-    target_role: ''
+    name: '', email: '', education: '', experience_level: 'Entry Level',
+    phone: '', college: '', degree: '', skills: '', target_role: '',
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -35,11 +37,7 @@ const ProfilePage = () => {
   // Analysis state
   const [analysisResult, setAnalysisResult] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [applyCheckboxes, setApplyCheckboxes] = useState({
-    skills: true,
-    education: true,
-    target_role: true
-  });
+  const [applyCheckboxes, setApplyCheckboxes] = useState({ skills: true, education: true, target_role: true });
 
   useEffect(() => {
     if (user) {
@@ -52,7 +50,7 @@ const ProfilePage = () => {
         college: user.college || '',
         degree: user.degree || '',
         skills: user.skills || '',
-        target_role: user.target_role || ''
+        target_role: user.target_role || '',
       });
     } else {
       fetchUserProfile().catch(console.error);
@@ -63,42 +61,26 @@ const ProfilePage = () => {
   const fetchResumeInfo = async () => {
     try {
       const res = await api.get('/users/resume');
-      if (res.data.has_resume) {
-        setResumeInfo(res.data.resume);
-      } else {
-        setResumeInfo(null);
-      }
-    } catch (err) {
-      console.error("Failed to fetch resume info");
+      setResumeInfo(res.data.has_resume ? res.data.resume : null);
+    } catch {
+      // silent
     }
   };
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSaving(true);
     setSuccessMessage('');
     setErrorMessage('');
-
-    if (!formData.name.trim()) {
-      setErrorMessage('Full Name is required.');
-      setIsSaving(false);
-      return;
-    }
-
-    if (!formData.email.trim()) {
-      setErrorMessage('Email address is required.');
-      setIsSaving(false);
-      return;
-    }
-
+    if (!formData.name.trim()) { setErrorMessage('Full Name is required.'); setIsSaving(false); return; }
+    if (!formData.email.trim()) { setErrorMessage('Email address is required.'); setIsSaving(false); return; }
     try {
       const response = await api.put('/users/profile', formData);
       updateUser(response.data);
       setSuccessMessage('Profile updated successfully!');
+      setTimeout(() => setSuccessMessage(''), 4000);
     } catch (err) {
       setErrorMessage(err.response?.data?.detail || 'Failed to update profile. Please try again.');
     } finally {
@@ -106,24 +88,14 @@ const ProfilePage = () => {
     }
   };
 
-  // Resume Upload Handler
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     setResumeError('');
     setResumeMessage('');
     if (!file) return;
-
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-    if (!['.pdf', '.docx'].includes(ext)) {
-      setResumeError('Only PDF (.pdf) and Word (.docx) files are supported.');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setResumeError('File size exceeds 5 MB limit.');
-      return;
-    }
-
+    if (!['.pdf', '.docx'].includes(ext)) { setResumeError('Only PDF or Word (.docx) files are supported.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setResumeError('File size exceeds 5 MB limit.'); return; }
     setSelectedFile(file);
   };
 
@@ -132,18 +104,14 @@ const ProfilePage = () => {
     setIsUploading(true);
     setResumeError('');
     setResumeMessage('');
-
     const uploadData = new FormData();
     uploadData.append('file', selectedFile);
-
     try {
-      const res = await api.post('/users/resume', uploadData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      await api.post('/users/resume', uploadData, { headers: { 'Content-Type': 'multipart/form-data' } });
       setResumeMessage('Resume uploaded successfully!');
       setSelectedFile(null);
       await fetchResumeInfo();
-      await fetchUserProfile(); // Refresh AuthContext
+      await fetchUserProfile();
     } catch (err) {
       setResumeError(err.response?.data?.detail || 'Failed to upload resume.');
     } finally {
@@ -151,7 +119,6 @@ const ProfilePage = () => {
     }
   };
 
-  // Resume Download Handler
   const handleDownloadResume = async () => {
     try {
       const res = await api.get('/users/resume/download', { responseType: 'blob' });
@@ -164,17 +131,15 @@ const ProfilePage = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
+    } catch {
       setResumeError('Failed to download resume.');
     }
   };
 
-  // Resume Delete Handler
   const handleDeleteResume = async () => {
-    if (!window.confirm("Are you sure you want to delete your stored resume?")) return;
+    if (!window.confirm('Are you sure you want to delete your stored resume?')) return;
     setResumeError('');
     setResumeMessage('');
-
     try {
       await api.delete('/users/resume');
       setResumeMessage('Resume deleted successfully.');
@@ -186,12 +151,10 @@ const ProfilePage = () => {
     }
   };
 
-  // Resume Analysis Handler
   const handleAnalyzeResume = async () => {
     setIsAnalyzing(true);
     setResumeError('');
     setResumeMessage('');
-
     try {
       const res = await api.post('/api/users/resume/analyze');
       setAnalysisResult(res.data);
@@ -202,33 +165,22 @@ const ProfilePage = () => {
     }
   };
 
-  // Apply Selected Analysis Suggestions
   const handleApplySuggestions = async () => {
     if (!analysisResult) return;
     const updated = { ...formData };
-
     if (applyCheckboxes.skills && analysisResult.skills?.length > 0) {
       const existing = formData.skills ? formData.skills.split(',').map(s => s.trim()) : [];
-      const merged = Array.from(new Set([...existing, ...analysisResult.skills])).filter(Boolean).join(', ');
-      updated.skills = merged;
+      updated.skills = Array.from(new Set([...existing, ...analysisResult.skills])).filter(Boolean).join(', ');
     }
-
-    if (applyCheckboxes.education && analysisResult.education) {
-      updated.education = analysisResult.education;
-    }
-
-    if (applyCheckboxes.target_role && analysisResult.target_role) {
-      updated.target_role = analysisResult.target_role;
-    }
-
+    if (applyCheckboxes.education && analysisResult.education) updated.education = analysisResult.education;
+    if (applyCheckboxes.target_role && analysisResult.target_role) updated.target_role = analysisResult.target_role;
     setFormData(updated);
-
     try {
       const res = await api.put('/users/profile', updated);
       updateUser(res.data);
       setSuccessMessage('Resume suggestions applied to your profile!');
       setAnalysisResult(null);
-    } catch (err) {
+    } catch {
       setErrorMessage('Failed to update profile with suggestions.');
     }
   };
@@ -238,389 +190,280 @@ const ProfilePage = () => {
     const k = 1024;
     const sizes = ['B', 'KB', 'MB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
   };
 
+  const initial = user?.name?.trim().charAt(0).toUpperCase() || user?.email?.trim().charAt(0).toUpperCase() || 'U';
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-12">
-      <div>
-        <h2 className="text-3xl font-bold text-slate-900">User Profile</h2>
-        <p className="text-slate-500 mt-1">Manage your account information, background, and resume documents.</p>
-      </div>
+    <div className="page-container max-w-4xl space-y-6 pb-12">
 
+      <PageHeader
+        title="Profile & Settings"
+        subtitle="Manage your account information, education background, and resume documents."
+      />
+
+      {/* Global alerts */}
       {successMessage && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center space-x-3 text-sm font-medium">
-          <CheckCircle size={20} className="text-emerald-600 flex-shrink-0" />
-          <span>{successMessage}</span>
-        </div>
+        <AlertBanner type="success" message={successMessage} onDismiss={() => setSuccessMessage('')} />
       )}
-
       {errorMessage && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl flex items-center space-x-3 text-sm font-medium">
-          <AlertCircle size={20} className="text-red-600 flex-shrink-0" />
-          <span>{errorMessage}</span>
-        </div>
+        <AlertBanner type="error" message={errorMessage} onDismiss={() => setErrorMessage('')} />
       )}
 
-      {/* SECTION: Resume & Document Management */}
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-        <div className="flex items-center space-x-2 border-b border-slate-100 pb-4">
-          <FileText size={20} className="text-blue-600" />
-          <h3 className="text-lg font-bold text-slate-900">Resume & Documents</h3>
+      {/* ── Profile avatar banner ── */}
+      <SectionCard>
+        <div className="flex items-center gap-5">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center text-2xl font-bold text-white flex-shrink-0 shadow-md shadow-indigo-500/30">
+            {initial}
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-white">{user?.name || 'Your Name'}</h2>
+            <p className="text-sm text-slate-400">{user?.email || ''}</p>
+            {user?.experience_level && (
+              <span className="inline-flex mt-1 items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-950/80 text-indigo-300 border border-indigo-700/50">
+                {user.experience_level}
+              </span>
+            )}
+          </div>
         </div>
+      </SectionCard>
 
-        {resumeMessage && (
-          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl text-sm font-medium flex items-center space-x-2">
-            <CheckCircle size={16} />
-            <span>{resumeMessage}</span>
-          </div>
-        )}
-
-        {resumeError && (
-          <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm font-medium flex items-center space-x-2">
-            <AlertCircle size={16} />
-            <span>{resumeError}</span>
-          </div>
-        )}
+      {/* ── Resume Section ── */}
+      <SectionCard title="Resume & Documents">
+        {resumeMessage && <div className="mb-4"><AlertBanner type="success" message={resumeMessage} onDismiss={() => setResumeMessage('')} /></div>}
+        {resumeError && <div className="mb-4"><AlertBanner type="error" message={resumeError} onDismiss={() => setResumeError('')} /></div>}
 
         {resumeInfo ? (
-          <div className="space-y-6">
-            {/* Existing Resume Banner */}
-            <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex items-center space-x-4">
-                <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
-                  <FileCheck size={28} />
-                </div>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <p className="font-bold text-slate-900">{resumeInfo.filename}</p>
-                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-xs rounded-full">Active</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {resumeInfo.file_type} • {formatFileSize(resumeInfo.size)}
-                  </p>
-                </div>
+          <div className="space-y-5">
+            {/* Uploaded file card */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 bg-slate-900 border border-slate-800 rounded-2xl">
+              <div className="p-3 bg-indigo-950/80 text-indigo-400 border border-indigo-700/50 rounded-xl flex-shrink-0">
+                <FileCheck size={24} aria-hidden="true" />
               </div>
-
-              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <button
-                  type="button"
-                  onClick={handleDownloadResume}
-                  className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition"
-                >
-                  <Download size={14} />
-                  <span>Download</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-white truncate">{resumeInfo.filename}</p>
+                  <span className="badge badge-success flex-shrink-0">Active</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {resumeInfo.file_type} · {formatFileSize(resumeInfo.size)}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={handleDownloadResume} className="btn-secondary text-xs py-1.5 px-3">
+                  <Download size={13} /> Download
                 </button>
                 <button
-                  type="button"
                   onClick={handleAnalyzeResume}
                   disabled={isAnalyzing}
-                  className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-sm disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50"
                 >
-                  <Sparkles size={14} />
-                  <span>{isAnalyzing ? 'Analyzing...' : 'Analyze Resume'}</span>
+                  {isAnalyzing ? <><Loader2 size={13} className="animate-spin" /> Analyzing…</> : <><Sparkles size={13} /> Analyze</>}
                 </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteResume}
-                  className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition"
-                >
-                  <Trash2 size={14} />
-                  <span>Delete</span>
+                <button onClick={handleDeleteResume} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 rounded-lg text-xs font-semibold transition">
+                  <Trash2 size={13} /> Delete
                 </button>
               </div>
             </div>
 
-            {/* Replace Resume Accordion / Input */}
-            <div className="pt-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Replace Current Resume:</label>
-              <div className="flex items-center space-x-3">
-                <input 
-                  type="file" 
-                  accept=".pdf,.docx" 
+            {/* Replace resume */}
+            <div>
+              <label className="form-label text-xs uppercase tracking-wider text-slate-400">Replace current resume:</label>
+              <div className="flex items-center gap-3 mt-1">
+                <input
+                  type="file"
+                  accept=".pdf,.docx"
                   onChange={handleFileSelect}
-                  className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+                  className="block text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer"
                 />
                 {selectedFile && (
                   <button
                     type="button"
                     onClick={handleUploadResume}
                     disabled={isUploading}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex-shrink-0 transition disabled:opacity-50"
+                    className="btn-primary text-xs py-2 flex-shrink-0"
                   >
-                    {isUploading ? 'Uploading...' : 'Upload Replacement'}
+                    {isUploading ? <><Loader2 size={13} className="animate-spin" /> Uploading…</> : 'Upload'}
                   </button>
                 )}
               </div>
             </div>
           </div>
         ) : (
-          /* Upload New Resume Box */
-          <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center space-y-4 bg-slate-50/50">
-            <div className="mx-auto w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-              <Upload size={24} />
+          /* Upload new resume */
+          <div className="border-2 border-dashed border-slate-700 rounded-2xl p-8 text-center space-y-4 bg-slate-900/40">
+            <div className="mx-auto w-12 h-12 bg-indigo-950/80 text-indigo-400 border border-indigo-700/50 rounded-2xl flex items-center justify-center">
+              <Upload size={22} aria-hidden="true" />
             </div>
             <div>
-              <p className="font-bold text-slate-800 text-base">Upload Your Resume</p>
-              <p className="text-xs text-slate-500 mt-1">Supported formats: PDF (.pdf), Word (.docx) | Maximum size: 5 MB</p>
+              <p className="font-bold text-white">Upload Your Resume</p>
+              <p className="text-xs text-slate-400 mt-1">PDF or Word (.docx) · Max 5 MB</p>
             </div>
             <div className="flex flex-col items-center gap-3">
-              <input 
-                type="file" 
-                accept=".pdf,.docx" 
+              <input
+                type="file"
+                accept=".pdf,.docx"
                 onChange={handleFileSelect}
-                className="block text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
+                className="block text-xs text-slate-400 file:mr-4 file:py-2 file:px-5 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
               />
               {selectedFile && (
                 <button
                   type="button"
                   onClick={handleUploadResume}
                   disabled={isUploading}
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-md shadow-blue-500/20 disabled:opacity-50"
+                  className="btn-primary text-sm"
                 >
-                  {isUploading ? 'Uploading Resume...' : 'Confirm Resume Upload'}
+                  {isUploading ? <><Loader2 size={15} className="animate-spin" /> Uploading…</> : 'Confirm Upload'}
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* Resume Analysis Review & Apply Suggestions Card */}
+        {/* Analysis result panel */}
         {analysisResult && (
-          <div className="p-6 bg-gradient-to-br from-indigo-50/80 to-blue-50/80 border border-indigo-200/80 rounded-2xl space-y-5">
-            <div className="flex items-center space-x-2">
-              <Sparkles size={20} className="text-indigo-600" />
-              <h4 className="font-bold text-slate-900 text-base">Extracted Resume Analysis Suggestions</h4>
+          <div className="mt-5 p-5 bg-indigo-950/30 border border-indigo-800/50 rounded-2xl space-y-4">
+            <div className="flex items-center gap-2">
+              <Sparkles size={18} className="text-indigo-400" />
+              <h4 className="font-bold text-indigo-200">AI Resume Analysis</h4>
             </div>
-
             {analysisResult.extracted ? (
-              <div className="space-y-4 text-sm">
-                <p className="text-slate-600 text-xs leading-relaxed">
-                  Review extracted data below. Uncheck any item you do not want to apply to your profile.
+              <>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Review the extracted data below. Uncheck anything you don't want to apply.
                 </p>
-
-                <div className="space-y-3 bg-white p-4 rounded-xl border border-indigo-100">
+                <div className="space-y-3 bg-slate-900 p-4 rounded-xl border border-indigo-900/50 text-sm">
                   {analysisResult.skills?.length > 0 && (
-                    <label className="flex items-start space-x-3 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={applyCheckboxes.skills} 
-                        onChange={(e) => setApplyCheckboxes({ ...applyCheckboxes, skills: e.target.checked })}
-                        className="mt-1 text-blue-600 rounded"
-                      />
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input type="checkbox" checked={applyCheckboxes.skills} onChange={e => setApplyCheckboxes({ ...applyCheckboxes, skills: e.target.checked })} className="mt-1 accent-indigo-500 rounded" />
                       <div>
-                        <span className="font-semibold text-slate-900">Add Extracted Skills:</span>
+                        <span className="font-semibold text-white">Add Extracted Skills:</span>
                         <div className="flex flex-wrap gap-1.5 mt-1">
-                          {analysisResult.skills.map((s, idx) => (
-                            <span key={idx} className="px-2 py-0.5 bg-blue-50 text-blue-700 font-medium text-xs rounded-md">
-                              {s}
-                            </span>
+                          {analysisResult.skills.map((s, i) => (
+                            <span key={i} className="px-2 py-0.5 bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 text-xs font-medium rounded-md">{s}</span>
                           ))}
                         </div>
                       </div>
                     </label>
                   )}
-
                   {analysisResult.education && (
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={applyCheckboxes.education} 
-                        onChange={(e) => setApplyCheckboxes({ ...applyCheckboxes, education: e.target.checked })}
-                        className="text-blue-600 rounded"
-                      />
-                      <div>
-                        <span className="font-semibold text-slate-900">Education Level: </span>
-                        <span className="text-slate-700">{analysisResult.education}</span>
-                      </div>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" checked={applyCheckboxes.education} onChange={e => setApplyCheckboxes({ ...applyCheckboxes, education: e.target.checked })} className="accent-indigo-500 rounded" />
+                      <span className="text-slate-300"><strong className="text-white">Education: </strong>{analysisResult.education}</span>
                     </label>
                   )}
-
                   {analysisResult.target_role && (
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={applyCheckboxes.target_role} 
-                        onChange={(e) => setApplyCheckboxes({ ...applyCheckboxes, target_role: e.target.checked })}
-                        className="text-blue-600 rounded"
-                      />
-                      <div>
-                        <span className="font-semibold text-slate-900">Suggested Target Role: </span>
-                        <span className="text-slate-700">{analysisResult.target_role}</span>
-                      </div>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" checked={applyCheckboxes.target_role} onChange={e => setApplyCheckboxes({ ...applyCheckboxes, target_role: e.target.checked })} className="accent-indigo-500 rounded" />
+                      <span className="text-slate-300"><strong className="text-white">Target Role: </strong>{analysisResult.target_role}</span>
                     </label>
                   )}
                 </div>
-
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setAnalysisResult(null)}
-                    className="px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-xl font-semibold text-xs hover:bg-slate-50 transition"
-                  >
-                    Dismiss
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApplySuggestions}
-                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition"
-                  >
-                    Apply Selected Suggestions
-                  </button>
+                <div className="flex justify-end gap-3">
+                  <button type="button" onClick={() => setAnalysisResult(null)} className="btn-secondary text-xs">Dismiss</button>
+                  <button type="button" onClick={handleApplySuggestions} className="btn-primary text-xs">Apply Suggestions</button>
                 </div>
-              </div>
+              </>
             ) : (
-              <p className="text-slate-600 text-xs">{analysisResult.message}</p>
+              <p className="text-slate-300 text-xs">{analysisResult.message}</p>
             )}
           </div>
         )}
-      </div>
+      </SectionCard>
 
-      {/* FORM: User & Profile Details */}
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Section 1: Account Information */}
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-          <div className="flex items-center space-x-2 border-b border-slate-100 pb-4">
-            <User size={20} className="text-blue-600" />
-            <h3 className="text-lg font-bold text-slate-900">Account Information</h3>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Full Name *</label>
-              <input 
-                type="text" 
-                name="name" 
-                required
-                value={formData.name} 
-                onChange={handleChange} 
-                className="mt-1 block w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" 
-              />
+      {/* ── Profile Form ── */}
+      <form onSubmit={handleSubmit} noValidate>
+        <div className="space-y-5">
+          {/* Account Information */}
+          <SectionCard title="Account Information">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <Field label="Full Name *">
+                <input
+                  type="text" name="name" required placeholder="Alex Johnson"
+                  value={formData.name} onChange={handleChange} className="form-input"
+                />
+              </Field>
+              <Field label="Email Address *">
+                <input
+                  type="email" name="email" required placeholder="you@example.com"
+                  value={formData.email} onChange={handleChange} className="form-input"
+                />
+              </Field>
+              <Field label="Phone Number">
+                <input
+                  type="text" name="phone" placeholder="+1 (555) 000-0000"
+                  value={formData.phone} onChange={handleChange} className="form-input"
+                />
+              </Field>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Email Address *</label>
-              <input 
-                type="email" 
-                name="email" 
-                required
-                value={formData.email} 
-                onChange={handleChange} 
-                className="mt-1 block w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" 
-              />
-            </div>
-          </div>
-        </div>
+          </SectionCard>
 
-        {/* Section 2: Education & Background */}
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-          <div className="flex items-center space-x-2 border-b border-slate-100 pb-4">
-            <GraduationCap size={20} className="text-blue-600" />
-            <h3 className="text-lg font-bold text-slate-900">Education & Experience</h3>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Education Level</label>
-              <input 
-                type="text" 
-                name="education" 
-                placeholder="e.g. Bachelor's Degree" 
-                value={formData.education} 
-                onChange={handleChange} 
-                className="mt-1 block w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" 
-              />
+          {/* Education & Background */}
+          <SectionCard title="Education & Experience">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <Field label="Education Level">
+                <input
+                  type="text" name="education" placeholder="Bachelor's Degree"
+                  value={formData.education} onChange={handleChange} className="form-input"
+                />
+              </Field>
+              <Field label="Experience Level">
+                <select name="experience_level" value={formData.experience_level} onChange={handleChange} className="form-select">
+                  <option value="Entry Level">Entry Level</option>
+                  <option value="Mid Level">Mid Level</option>
+                  <option value="Senior Level">Senior Level</option>
+                </select>
+              </Field>
+              <Field label="College / University">
+                <input
+                  type="text" name="college" placeholder="e.g. MIT, Stanford…"
+                  value={formData.college} onChange={handleChange} className="form-input"
+                />
+              </Field>
+              <Field label="Degree / Major">
+                <input
+                  type="text" name="degree" placeholder="B.S. Computer Science"
+                  value={formData.degree} onChange={handleChange} className="form-input"
+                />
+              </Field>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Experience Level</label>
-              <select 
-                name="experience_level" 
-                value={formData.experience_level} 
-                onChange={handleChange} 
-                className="mt-1 block w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+          </SectionCard>
+
+          {/* Career & Skills */}
+          <SectionCard title="Career & Technical Profile">
+            <div className="grid grid-cols-1 gap-5">
+              <Field label="Target Role">
+                <input
+                  type="text" name="target_role" placeholder="e.g. Software Developer, Data Scientist"
+                  value={formData.target_role} onChange={handleChange} className="form-input"
+                />
+              </Field>
+              <Field label="Skills (comma-separated)">
+                <textarea
+                  name="skills" rows={3}
+                  placeholder="e.g. Python, React, SQL, FastAPI, Machine Learning"
+                  value={formData.skills} onChange={handleChange}
+                  className="form-input resize-none"
+                />
+              </Field>
+            </div>
+
+            {/* Save button */}
+            <div className="flex justify-end pt-5 mt-2 border-t border-slate-100">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="btn-primary px-8 py-3"
               >
-                <option value="Entry Level">Entry Level</option>
-                <option value="Mid Level">Mid Level</option>
-                <option value="Senior Level">Senior Level</option>
-              </select>
+                {isSaving ? (
+                  <><Loader2 size={17} className="animate-spin" /> Saving…</>
+                ) : (
+                  <><Save size={17} /> Save Profile</>
+                )}
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">College / University</label>
-              <input 
-                type="text" 
-                name="college" 
-                placeholder="e.g. Stanford University" 
-                value={formData.college} 
-                onChange={handleChange} 
-                className="mt-1 block w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" 
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Degree / Major</label>
-              <input 
-                type="text" 
-                name="degree" 
-                placeholder="e.g. B.S. Computer Science" 
-                value={formData.degree} 
-                onChange={handleChange} 
-                className="mt-1 block w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" 
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Section 3: Professional & Career Goals */}
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-          <div className="flex items-center space-x-2 border-b border-slate-100 pb-4">
-            <Briefcase size={20} className="text-blue-600" />
-            <h3 className="text-lg font-bold text-slate-900">Career & Technical Profile</h3>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Phone Number</label>
-              <input 
-                type="text" 
-                name="phone" 
-                placeholder="e.g. +1 (555) 000-0000" 
-                value={formData.phone} 
-                onChange={handleChange} 
-                className="mt-1 block w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" 
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Target Role</label>
-              <input 
-                type="text" 
-                name="target_role" 
-                placeholder="e.g. Software Developer" 
-                value={formData.target_role} 
-                onChange={handleChange} 
-                className="mt-1 block w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" 
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700">Skills (comma-separated)</label>
-              <textarea 
-                name="skills" 
-                rows="3" 
-                placeholder="e.g. Python, React, SQL, Data Structures, FastAPI" 
-                value={formData.skills} 
-                onChange={handleChange} 
-                className="mt-1 block w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition resize-none"
-              ></textarea>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-4">
-            <button 
-              type="submit" 
-              disabled={isSaving}
-              className="flex items-center space-x-2 px-8 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition font-bold shadow-lg shadow-blue-500/30 disabled:opacity-50"
-            >
-              <Save size={18} />
-              <span>{isSaving ? 'Saving Changes...' : 'Save Profile'}</span>
-            </button>
-          </div>
+          </SectionCard>
         </div>
       </form>
     </div>

@@ -1,15 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import {
-  Mic,
-  Square,
-  Send,
-  ChevronRight,
-  Clock,
-  AlertCircle,
-  Volume2,
-  VolumeX,
+  Mic, Square, Send, ChevronRight, Clock,
+  AlertCircle, Volume2, VolumeX, Tag, Zap, Loader2, RefreshCw,
 } from 'lucide-react';
 import useSpeechRecognition from '../hooks/useSpeechRecognition';
 import useTextToSpeech from '../hooks/useTextToSpeech';
@@ -18,61 +12,92 @@ const ActiveInterviewPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // ── Interview state ───────────────────────────────────────────────────────
   const [interview, setInterview] = useState(null);
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [currentQuestionId, setCurrentQuestionId] = useState(null);
-  const [questionText, setQuestionText] = useState('Loading your first question...');
+  const [questionText, setQuestionText] = useState('');
   const [currentTopic, setCurrentTopic] = useState('');
+  const [currentDifficulty, setCurrentDifficulty] = useState('');
   const [answer, setAnswer] = useState('');
   const [isEvaluating, setIsEvaluating] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(120); // 2 mins per question
+  const [isLoadingQuestion, setIsLoadingQuestion] = useState(true);
+  const [generationError, setGenerationError] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(120);
   const [startTime] = useState(Date.now());
+  const initialLoadDone = useRef(false);
 
-  // ── Speech-to-text (Checkpoint 6A) ───────────────────────────────────────
+  // Speech recognition
   const handleFinalTranscript = useCallback((text) => {
-    setAnswer((prev) => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + text);
+    setAnswer(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + text);
   }, []);
-
   const {
-    isSupported: isSpeechInputSupported,
-    isRecording,
-    interimTranscript,
-    error: speechError,
-    startRecording,
-    stopRecording,
+    isSupported: isSpeechInputSupported, isRecording,
+    interimTranscript, error: speechError,
+    startRecording, stopRecording,
   } = useSpeechRecognition(handleFinalTranscript);
 
-  // ── Text-to-speech (Checkpoint 6B) ───────────────────────────────────────
+  // TTS
   const {
-    isSupported: isTTSSupported,
-    isSpeaking,
-    error: ttsError,
-    speak,
-    stop: stopSpeaking,
+    isSupported: isTTSSupported, isSpeaking,
+    error: ttsError, speak, stop: stopSpeaking,
   } = useTextToSpeech();
 
-  // ── Load interview on mount ───────────────────────────────────────────────
+  // Load interview on mount — resumes existing questions if present
   useEffect(() => {
-    const fetchInterview = async () => {
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
+
+    const fetchInterviewAndQuestions = async () => {
       try {
-        const res = await api.get(`/interviews/${id}`);
-        setInterview(res.data);
-        await generateAndSaveNextQuestion(res.data, 0);
+        const res = await api.get(`/interviews/${id}/details`);
+        const intData = res.data;
+        setInterview(intData);
+
+        const existingQuestions = intData.questions || [];
+        if (existingQuestions.length > 0) {
+          // Check for pending unanswered question
+          const unansweredIdx = existingQuestions.findIndex(q => !q.answer);
+          if (unansweredIdx !== -1) {
+            const pendingQ = existingQuestions[unansweredIdx];
+            setCurrentQuestionIdx(unansweredIdx);
+            setCurrentQuestionId(pendingQ.id);
+            setQuestionText(pendingQ.question_text);
+            setCurrentTopic(pendingQ.topic || '');
+            setCurrentDifficulty(pendingQ.difficulty || intData.difficulty);
+            setIsLoadingQuestion(false);
+            setGenerationError(null);
+            return;
+          } else if (existingQuestions.length < intData.total_questions) {
+            // All prior answered, generate next
+            const nextIdx = existingQuestions.length;
+            setCurrentQuestionIdx(nextIdx);
+            await generateAndSaveNextQuestion(intData, nextIdx);
+            return;
+          } else {
+            // All completed
+            navigate(`/interview/${id}/result`);
+            return;
+          }
+        }
+
+        // Fresh interview with no questions yet
+        await generateAndSaveNextQuestion(intData, 0);
       } catch (err) {
-        console.error('Failed to fetch interview', err);
+        console.error('Failed to load interview session:', err);
         navigate('/dashboard');
       }
     };
-    fetchInterview();
+    fetchInterviewAndQuestions();
   }, [id, navigate]);
 
-  // ── Per-question countdown timer ──────────────────────────────────────────
+  // Countdown timer — only runs when a valid question exists and is not loading
   useEffect(() => {
+    if (isLoadingQuestion || generationError || !questionText) {
+      return;
+    }
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
+      setTimeLeft(prev => {
         if (prev <= 1) {
-          // Timer expired — stop all voice features and let existing logic handle it
           stopSpeaking();
           if (isRecording) stopRecording();
           return 0;
@@ -81,15 +106,14 @@ const ActiveInterviewPage = () => {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [currentQuestionIdx, stopSpeaking, isRecording, stopRecording]);
+  }, [currentQuestionIdx, isLoadingQuestion, generationError, questionText, stopSpeaking, isRecording, stopRecording]);
 
-  // ── Stop TTS whenever the question changes ────────────────────────────────
-  useEffect(() => {
-    stopSpeaking();
-  }, [currentQuestionIdx]);
+  useEffect(() => { stopSpeaking(); }, [currentQuestionIdx]);
 
-  // ── Generate + persist next question ─────────────────────────────────────
   const generateAndSaveNextQuestion = async (intData, seqIdx) => {
+    setIsLoadingQuestion(true);
+    setGenerationError(null);
+    setQuestionText('');
     try {
       const res = await api.post('/ai/generate-question', {
         job_role: intData.job_role,
@@ -98,47 +122,52 @@ const ActiveInterviewPage = () => {
         skills: '',
         interview_id: Number(id),
       });
-      const text = res.data.question;
-      const qDifficulty = res.data.difficulty || intData.difficulty;
+
+      const qText = res.data.question;
       const qTopic = res.data.topic || '';
+      const qDiff = res.data.difficulty || intData.difficulty;
 
-      setQuestionText(text);
-      setCurrentTopic(qTopic);
-      setTimeLeft(120);
-
-      // Save question to database
       const qRes = await api.post(`/interviews/${id}/questions`, {
-        question_text: text,
+        question_text: qText,
         question_type: intData.interview_type,
-        difficulty: qDifficulty,
+        difficulty: qDiff,
         topic: qTopic,
         sequence_number: seqIdx + 1,
       });
+
+      setQuestionText(qText);
+      setCurrentTopic(qTopic);
+      setCurrentDifficulty(qDiff);
       setCurrentQuestionId(qRes.data.id);
+      setTimeLeft(120);
+      setGenerationError(null);
     } catch (err) {
-      setQuestionText('Failed to generate question. Please try again.');
+      console.error('Error generating question:', err);
+      const errorMsg = err.response?.data?.detail || 'Failed to generate question. Please try clicking retry.';
+      setGenerationError(errorMsg);
+      setQuestionText('');
+    } finally {
+      setIsLoadingQuestion(false);
     }
   };
 
-  // ── Submit answer ─────────────────────────────────────────────────────────
-  const handleSubmitAnswer = async () => {
-    if (!answer.trim()) return;
-    setIsEvaluating(true);
+  const handleRetryQuestion = () => {
+    if (interview) {
+      generateAndSaveNextQuestion(interview, currentQuestionIdx);
+    }
+  };
 
-    // Stop all voice features before submitting
+  const handleSubmitAnswer = async () => {
+    if (!answer.trim() || !questionText || isLoadingQuestion || generationError) return;
+    setIsEvaluating(true);
     if (isRecording) stopRecording();
     stopSpeaking();
-
     try {
-      // 1. Evaluate answer via AI (existing endpoint)
       const evalRes = await api.post('/ai/evaluate-answer', {
         question_text: questionText,
         answer_text: answer,
       });
-
       const evaluation = evalRes.data;
-
-      // 2. Save answer and evaluation to database
       if (currentQuestionId) {
         await api.post(`/interviews/${id}/questions/${currentQuestionId}/answers`, {
           answer_text: answer,
@@ -150,11 +179,7 @@ const ActiveInterviewPage = () => {
           feedback: evaluation.feedback,
         });
       }
-
-      // 3. Clear answer field
       setAnswer('');
-
-      // 4. Progress to next question or complete interview
       if (interview && currentQuestionIdx < interview.total_questions - 1) {
         const nextIdx = currentQuestionIdx + 1;
         setCurrentQuestionIdx(nextIdx);
@@ -164,211 +189,249 @@ const ActiveInterviewPage = () => {
         await api.post(`/interviews/${id}/complete`, { duration: durationSecs });
         navigate(`/interview/${id}/result`);
       }
-    } catch (err) {
-      console.error('Failed to evaluate/save answer', err);
+    } catch {
+      // keep user's answer, show nothing extra
     } finally {
       setIsEvaluating(false);
     }
   };
 
-  // ── Toggle microphone recording ───────────────────────────────────────────
-  const toggleRecording = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  };
+  const toggleRecording = () => isRecording ? stopRecording() : startRecording();
+  const handleReadQuestion = () => isSpeaking ? stopSpeaking() : speak(questionText);
 
-  // ── Toggle TTS speaking ───────────────────────────────────────────────────
-  const handleReadQuestion = () => {
-    if (isSpeaking) {
-      stopSpeaking();
-    } else {
-      speak(questionText);
-    }
-  };
-
-  // ── Loading guard ─────────────────────────────────────────────────────────
   if (!interview) {
-    return <div className="p-8">Loading interview environment...</div>;
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-500">
+        <Loader2 size={32} className="animate-spin text-indigo-500" />
+        <span className="text-sm font-medium">Loading interview environment…</span>
+      </div>
+    );
   }
 
-  const formatTime = (seconds) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const isLastQuestion = currentQuestionIdx === interview.total_questions - 1;
+  const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const isLast = currentQuestionIdx === interview.total_questions - 1;
+  const progress = ((currentQuestionIdx + (isLoadingQuestion || !answer.trim() ? 0 : 0)) / interview.total_questions) * 100;
+  const difficultyColor = {
+    Beginner: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
+    Intermediate: 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30',
+    Advanced: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',
+  }[currentDifficulty] || 'bg-slate-800 text-slate-300 border border-slate-700';
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 h-full flex flex-col">
-      {/* ── Header: role name + question progress + timer ── */}
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h2 className="text-xl font-bold text-slate-900">{interview.job_role} Interview</h2>
+    <div className="max-w-3xl mx-auto flex flex-col gap-6 animate-fade-in">
+      {/* ── Header ── */}
+      <div className="card px-5 py-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-bold text-white">{interview.job_role}</span>
             {currentTopic && (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                Topic: {currentTopic}
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700/60">
+                <Tag size={11} /> {currentTopic}
               </span>
             )}
-            {currentQuestionIdx > 0 && (
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                Tailored Question
+            {currentDifficulty && (
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${difficultyColor}`}>
+                <Zap size={11} /> {currentDifficulty}
               </span>
             )}
           </div>
-          <p className="text-sm text-slate-500">
-            Question {currentQuestionIdx + 1} of {interview.total_questions}
-          </p>
+          <div className="flex items-center gap-4">
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-sm transition-colors ${
+                timeLeft < 30 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-slate-800 text-slate-200 border border-slate-700/60'
+              }`}
+              aria-live="polite"
+              aria-label={`Time remaining: ${formatTime(timeLeft)}`}
+            >
+              <Clock size={16} aria-hidden="true" />
+              {formatTime(timeLeft)}
+            </div>
+            <span className="text-xs font-semibold text-slate-400">
+              {currentQuestionIdx + 1} / {interview.total_questions}
+            </span>
+          </div>
         </div>
-        <div
-          className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-bold ${
-            timeLeft < 30 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-700'
-          }`}
-        >
-          <Clock size={20} />
-          <span>{formatTime(timeLeft)}</span>
+
+        {/* Progress bar */}
+        <div className="mt-3 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+            style={{ width: `${((currentQuestionIdx) / interview.total_questions) * 100}%` }}
+            role="progressbar"
+            aria-valuenow={currentQuestionIdx}
+            aria-valuemax={interview.total_questions}
+          />
         </div>
       </div>
 
-      {/* ── Main card ── */}
-      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 mb-6 flex-1 flex flex-col">
-
-        {/* ── Question section ── */}
-        <div className="flex-1 mb-6">
-          {/* TTS control — shown only when TTS is supported */}
-          {isTTSSupported && (
-            <div className="mb-4 flex items-center space-x-3">
+      {/* ── Main Question Card ── */}
+      <div className="card p-6 md:p-8 flex flex-col gap-6">
+        {/* Question area */}
+        <div>
+          {/* TTS control */}
+          {isTTSSupported && !isLoadingQuestion && questionText && (
+            <div className="flex items-center gap-3 mb-4">
               <button
                 id="read-question-btn"
                 onClick={handleReadQuestion}
-                aria-label={isSpeaking ? 'Stop reading the question aloud' : 'Read the question aloud'}
-                title={isSpeaking ? 'Stop Speaking' : 'Read Question Aloud'}
-                className={`inline-flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                aria-label={isSpeaking ? 'Stop reading aloud' : 'Read question aloud'}
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
                   isSpeaking
-                    ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 focus:ring-indigo-500'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 focus:ring-slate-400'
+                    ? 'bg-indigo-950/70 text-indigo-300 hover:bg-indigo-900 border border-indigo-700/50'
+                    : 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700'
                 }`}
               >
                 {isSpeaking ? (
                   <>
-                    <VolumeX size={16} aria-hidden="true" />
-                    <span>Stop Speaking</span>
-                    {/* Animated speaking indicator */}
-                    <span className="flex items-end space-x-0.5 h-4" aria-hidden="true">
-                      <span className="w-0.5 bg-indigo-500 rounded-full animate-bounce" style={{ height: '8px', animationDelay: '0ms' }} />
-                      <span className="w-0.5 bg-indigo-500 rounded-full animate-bounce" style={{ height: '12px', animationDelay: '150ms' }} />
-                      <span className="w-0.5 bg-indigo-500 rounded-full animate-bounce" style={{ height: '8px', animationDelay: '300ms' }} />
+                    <VolumeX size={14} aria-hidden="true" />
+                    Stop Speaking
+                    {/* Wave bars */}
+                    <span className="flex items-end gap-0.5 h-3.5" aria-hidden="true">
+                      <span className="w-0.5 bg-indigo-400 rounded-full animate-bar-1" style={{ height: '6px' }} />
+                      <span className="w-0.5 bg-indigo-400 rounded-full animate-bar-2" style={{ height: '10px' }} />
+                      <span className="w-0.5 bg-indigo-400 rounded-full animate-bar-3" style={{ height: '6px' }} />
                     </span>
                   </>
                 ) : (
                   <>
-                    <Volume2 size={16} aria-hidden="true" />
-                    <span>Read Question</span>
+                    <Volume2 size={14} aria-hidden="true" />
+                    Read Question
                   </>
                 )}
               </button>
-
-              {/* Inline TTS error — dismissible */}
               {ttsError && (
-                <div
-                  role="alert"
-                  className="flex items-center space-x-2 text-amber-600 text-sm bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200"
-                >
-                  <AlertCircle size={14} aria-hidden="true" />
-                  <span>{ttsError}</span>
-                </div>
+                <span className="flex items-center gap-1 text-xs text-amber-300 bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-800/60" role="alert">
+                  <AlertCircle size={12} />
+                  {ttsError}
+                </span>
               )}
             </div>
           )}
 
-          {/* Question text — always visible regardless of TTS availability */}
-          <h3 className="text-2xl font-semibold text-slate-900 leading-relaxed">
-            {questionText}
-          </h3>
+          {/* Question text */}
+          <div className="min-h-[80px]">
+            {isLoadingQuestion ? (
+              <div className="space-y-3 animate-pulse">
+                <div className="h-5 bg-slate-800 rounded-full w-full" />
+                <div className="h-5 bg-slate-800 rounded-full w-5/6" />
+                <div className="h-5 bg-slate-800/60 rounded-full w-3/4" />
+              </div>
+            ) : generationError ? (
+              <div className="p-6 rounded-xl bg-amber-950/40 border border-amber-800/60 flex flex-col items-center text-center gap-3" role="alert">
+                <AlertCircle size={32} className="text-amber-400" />
+                <div>
+                  <h3 className="text-base font-semibold text-white">Unable to generate question</h3>
+                  <p className="text-sm text-slate-300 mt-1">{generationError}</p>
+                </div>
+                <button
+                  id="retry-question-btn"
+                  onClick={handleRetryQuestion}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition"
+                >
+                  <RefreshCw size={15} />
+                  Retry Question
+                </button>
+              </div>
+            ) : (
+              <h2 className="text-xl md:text-2xl font-semibold text-white leading-relaxed">
+                {questionText}
+              </h2>
+            )}
+          </div>
         </div>
 
-        {/* ── Answer section ── */}
+        {/* Divider */}
+        <div className="border-t border-slate-800" />
+
+        {/* Answer section */}
         <div className="space-y-4">
-          {/* Textarea with interim transcript overlay */}
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Your Answer</p>
+
+          {/* Textarea */}
           <div className="relative">
             <textarea
               id="answer-textarea"
               value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              placeholder="Type your answer here, or use the microphone to speak..."
+              onChange={e => setAnswer(e.target.value)}
+              disabled={isLoadingQuestion || !!generationError || !questionText}
+              placeholder={
+                generationError
+                  ? "Question generation failed. Click Retry Question above to generate."
+                  : isLoadingQuestion
+                  ? "Generating question…"
+                  : "Type your answer here, or use the microphone to speak…"
+              }
               aria-label="Your answer"
-              className="w-full h-48 p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none text-lg leading-relaxed"
+              rows={6}
+              className="w-full p-4 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-400 leading-relaxed text-base resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
             />
-            {/* Interim transcript ghost overlay */}
+            {/* Interim transcript ghost */}
             {interimTranscript && (
-              <div className="absolute bottom-4 left-4 right-4 text-slate-400 italic text-lg leading-relaxed pointer-events-none">
+              <div className="absolute bottom-4 left-4 right-4 text-slate-400 italic text-sm pointer-events-none leading-relaxed">
                 {interimTranscript}
+              </div>
+            )}
+            {/* Recording indicator */}
+            {isRecording && (
+              <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 bg-red-500/20 text-red-300 border border-red-500/30 rounded-full text-xs font-semibold" aria-live="polite">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-mic-pulse" aria-hidden="true" />
+                Listening…
               </div>
             )}
           </div>
 
-          {/* Speech-to-text error */}
+          {/* Speech error */}
           {speechError && (
-            <div
-              role="alert"
-              className="flex items-center space-x-2 text-red-500 text-sm bg-red-50 p-2 rounded-lg"
-            >
-              <AlertCircle size={16} aria-hidden="true" />
-              <span>{speechError}</span>
+            <div className="flex items-center gap-2 text-sm text-red-300 bg-red-500/20 px-3 py-2 rounded-lg border border-red-500/30" role="alert">
+              <AlertCircle size={14} aria-hidden="true" />
+              {speechError}
             </div>
           )}
 
-          {/* Controls row: microphone | submit */}
-          <div className="flex justify-between items-center pt-2">
-            {/* Microphone / voice input */}
+          {/* Controls */}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            {/* Mic button */}
             {!isSpeechInputSupported ? (
-              <div className="text-slate-500 text-sm bg-slate-100 px-4 py-2 rounded-lg border border-slate-200">
-                Voice input is not supported in this browser. Please type your answer.
-              </div>
+              <p className="text-xs text-slate-400 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+                Voice input not supported in this browser.
+              </p>
             ) : (
               <button
                 id="toggle-recording-btn"
                 onClick={toggleRecording}
+                disabled={isLoadingQuestion || !!generationError || !questionText}
                 aria-label={isRecording ? 'Stop voice input' : 'Start voice input'}
-                title={isRecording ? 'Stop Recording' : 'Start Voice Input'}
-                className={`flex items-center space-x-2 px-6 py-3 rounded-full font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                   isRecording
-                    ? 'bg-red-100 text-red-600 hover:bg-red-200 focus:ring-red-400'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 focus:ring-slate-400'
+                    ? 'bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-400'
+                    : 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 focus-visible:ring-slate-400'
                 }`}
               >
-                {isRecording ? (
-                  <Square size={18} fill="currentColor" aria-hidden="true" />
-                ) : (
-                  <Mic size={18} aria-hidden="true" />
-                )}
-                <span>{isRecording ? 'Stop Voice Input' : 'Start Voice Input'}</span>
-                {isRecording && (
-                  <span
-                    className="w-2 h-2 bg-red-500 rounded-full animate-pulse"
-                    aria-hidden="true"
-                  />
-                )}
+                {isRecording
+                  ? <Square size={16} fill="currentColor" aria-hidden="true" />
+                  : <Mic size={16} aria-hidden="true" />
+                }
+                {isRecording ? 'Stop Voice' : 'Voice Input'}
               </button>
             )}
 
-            {/* Submit / finish */}
+            {/* Submit button */}
             <button
               id="submit-answer-btn"
               onClick={handleSubmitAnswer}
-              disabled={isEvaluating || !answer.trim()}
-              aria-label={isLastQuestion ? 'Finish interview' : 'Submit answer and continue to next question'}
-              className="flex items-center space-x-2 px-8 py-3 bg-blue-600 text-white rounded-full font-bold hover:bg-blue-700 transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              disabled={isEvaluating || !answer.trim() || isLoadingQuestion || !!generationError || !questionText}
+              aria-label={isLast ? 'Finish interview' : 'Submit answer and go to next question'}
+              className="inline-flex items-center gap-2 px-7 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold rounded-xl shadow-md shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
             >
-              <span>{isLastQuestion ? 'Finish Interview' : 'Submit & Next'}</span>
-              {isLastQuestion ? (
-                <Send size={18} aria-hidden="true" />
+              {isEvaluating ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                  Evaluating…
+                </>
+              ) : isLast ? (
+                <>Finish Interview <Send size={16} aria-hidden="true" /></>
               ) : (
-                <ChevronRight size={18} aria-hidden="true" />
+                <>Submit &amp; Next <ChevronRight size={16} aria-hidden="true" /></>
               )}
             </button>
           </div>

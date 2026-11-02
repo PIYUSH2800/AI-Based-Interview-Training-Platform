@@ -47,9 +47,10 @@ Provide a rigorous, constructive, and objective evaluation of the candidate's an
 Evaluation Guidelines:
 1. Base scores strictly on technical correctness, clarity, relevance, and completeness.
 2. Scores must be integers between 0 and 100.
-3. Do not reward rambling or irrelevant information.
-4. Do not penalize concise correct answers simply because they are brief.
-5. Provide specific, actionable feedback.
+3. If the candidate's answer is completely irrelevant, nonsensical, blank, or fails to address the question, you MUST assign 0 for technical_score, relevance_score, completeness_score, and overall_score.
+4. For valid concise answers that directly answer the question (such as 'O(log n)' or 'HTTP 404'), evaluate technical accuracy without penalizing for brevity.
+5. Award justified partial credit for partially correct answers; do not reward answers purely for verbosity or unrelated filler words.
+6. Provide specific, actionable feedback explaining where the answer succeeded or fell short.
 
 Requirements:
 Return ONLY a valid JSON object matching this exact structure:
@@ -212,4 +213,96 @@ Return ONLY a clear 3-4 sentence text paragraph (no JSON wrapping, no markdown c
 """
 
 
+CODING_HINT_PROMPT = """
+You are an expert technical interview mentor providing progressive hints to a student solving a coding problem.
 
+Context:
+- Problem Title: {title}
+- Difficulty: {difficulty}
+- Category: {category}
+- Description: {description}
+- Requested Hint Level: {level} ({level_name})
+
+Guidelines by Hint Level:
+- If Level 1 (Conceptual Guidance):
+  * Explain the fundamental algorithmic intuition or mental model.
+  * Frame the problem logically and ask guiding questions to spark ideas.
+  * DO NOT reveal data structures, code syntax, or concrete steps.
+- If Level 2 (Approach Guidance):
+  * Suggest appropriate data structures (e.g. hash map, two pointers, stack, sliding window).
+  * Outline the general algorithmic strategy and invariants.
+  * Point out 1-2 critical edge cases to think about.
+  * DO NOT provide full code or line-by-line solutions.
+- If Level 3 (Detailed Guidance):
+  * Provide a clear step-by-step algorithmic outline or structured pseudocode.
+  * Walk through the state transitions or pointer movements.
+  * DO NOT expose a complete copy-paste code solution.
+
+Strict Rules:
+1. Never invent or reveal hidden test cases.
+2. Return ONLY a valid JSON object matching the exact structure below.
+3. No markdown code blocks, backticks, or text outside the JSON.
+
+Expected JSON Structure:
+{{
+  "title": "Level {level} — {level_name}",
+  "hint": "Clear, instructive guidance text tailored strictly to this hint level",
+  "key_takeaways": ["Takeaway 1", "Takeaway 2"],
+  "edge_cases": ["Edge case consideration 1", "Edge case consideration 2"]
+}}
+
+Generate the JSON response now:
+"""
+
+
+CODING_EXPLANATION_PROMPT = """
+You are a senior computer science instructor explaining an optimal algorithmic solution for a technical interview problem.
+
+Problem Details:
+- Title: {title}
+- Difficulty: {difficulty}
+- Category: {category}
+- Description: {description}
+
+Task:
+Produce a comprehensive, educational deep-dive explaining the problem concepts from first principles.
+
+Requirements:
+1. Explain the intuitive problem breakdown.
+2. Discuss a naive/brute-force approach and explain why it is suboptimal.
+3. Detail the optimal algorithm and the core insight making it efficient.
+4. List step-by-step execution phases.
+5. Provide precise Big-O Time Complexity with clear mathematical reasoning.
+6. Provide precise Big-O Space Complexity with auxiliary memory justification.
+7. Highlight common traps or mistakes candidates make in interviews.
+8. Detail critical edge cases (e.g. empty inputs, duplicates, negatives, boundary sizes).
+9. Offer practical interview communication tips.
+10. Return ONLY a valid JSON object matching this exact structure:
+
+{{
+  "intuition": "High-level intuition and conceptual breakdown of what the problem is asking",
+  "brute_force": "Explanation of naive brute force approach and its limitations",
+  "optimized_approach": "Explanation of the optimal approach and why it works",
+  "step_by_step": [
+    "Step 1: ...",
+    "Step 2: ...",
+    "Step 3: ..."
+  ],
+  "time_complexity": "O(...) - detailed justification",
+  "space_complexity": "O(...) - detailed justification",
+  "common_mistakes": [
+    "Mistake 1: ...",
+    "Mistake 2: ..."
+  ],
+  "edge_cases": [
+    "Edge case 1: ...",
+    "Edge case 2: ..."
+  ],
+  "interview_tips": [
+    "Tip 1: ...",
+    "Tip 2: ..."
+  ]
+}}
+
+Generate the JSON response now:
+"""

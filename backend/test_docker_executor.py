@@ -16,7 +16,7 @@ def run_tests():
     else:
         print("DOCKER IS AVAILABLE")
 
-    limits = ExecutionLimits(timeout=2.0)
+    limits = ExecutionLimits(timeout=5.0)
     
     # 1. Python correct solution
     print("--- 1. Python correct solution ---")

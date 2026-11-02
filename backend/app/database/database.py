@@ -1,10 +1,13 @@
+from pathlib import Path
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
 
-# Create an SQLite database in the backend directory
-SQLALCHEMY_DATABASE_URL = "sqlite:///./interview_platform.db"
+# Anchor database to backend directory so cwd differences do not create split databases
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+DB_PATH = os.getenv("DATABASE_PATH", str(BACKEND_DIR / "interview_platform.db"))
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 # connect_args={"check_same_thread": False} is needed only for SQLite
 engine = create_engine(
